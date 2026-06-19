@@ -1,12 +1,10 @@
-# 3S-COM Orchestrator (CoreRouter)
+# AIO-Mesh: Hardware-Safe AIOps Orchestration for Cloud-Native Distributed Services over Programmable Infrastructures
 
-**CoreRouter** is the implementation repository for **3S-COM** (Smart, Scalable, Secure), a closed-loop orchestration platform for Service Function Chaining (SFC) in geo-distributed SDN/NFV networks.
+**AIO-Mesh** is the implementation of AIOps Orchestration for **3S-COM** (Smart, Scalable, Secure), a closed-loop orchestration platform for Service Function Chaining (SFC) in geo-distributed SDN/NFV networks.
 
-The project supports the bachelor thesis:
-
-**Joint Optimization of VNF Placement and Proactive Migration under Data-Plane Hardware Constraints**
-
-CoreRouter focuses on the **Joint Optimization of VNF Placement and Proactive Migration (JO-VPPM)** problem under real data-plane hardware constraints, especially **Maximum Segment Depth (MSD)** limits in **SRv6/P4** programmable networks. The orchestrator combines rule-based control, graph-aware reinforcement learning, Kubernetes-based VNF lifecycle management, and P4/SRv6 traffic steering.
+AIO-Mesh is a hardware-safe AIOps orchestration framework for cloud-native distributed systems running on programmable infrastructures. It enables online placement, routing, admission, and migration decisions based on telemetry and runtime feedback, while strictly respecting hard constraints such as CPU, memory, and SRv6 Maximum Segment Depth (MSD).
+At its core, HARP (Hardware-Aware Reinforcement Policy) combines graph-based topology encoding, MaskablePPO, hard action masking, and adaptive penalties to optimize service deployment and traffic steering. AIO-Mesh separates hard feasibility constraints (enforced before action selection) from soft optimization objectives (handled in the reward function), ensuring decisions are always deployable.
+The framework integrates Kubernetes/Tekton lifecycle management, SRv6/P4 data-plane steering, and closed-loop feedback. Experiments on Vietnam, NSFNET, and GEANT2 topologies, along with a hardware-in-the-loop testbed (MicroK8s, Mininet, BMv2), show improved safe acceptance and zero MSD violations across diverse stress scenarios.
 
 ## Why This Project Exists
 
@@ -46,12 +44,6 @@ src/orchestration/jo_vdpr/   RL environment, reward logic, topology, GNN policy
 src/portal/backend/          FastAPI backend
 src/portal/frontend/         React/Vite frontend
 test/, tests/                Smoke tests and Python unit tests
-```
-
-The thesis source is located at:
-
-```text
-docs/thesis_latex/myThesis.tex
 ```
 
 ## System Architecture
