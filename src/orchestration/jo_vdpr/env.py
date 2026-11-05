@@ -18,6 +18,7 @@ from typing import List, Optional, Union, Dict, Any
 
 from src.core.interfaces.repository import IRepository
 from src.orchestration.jo_vdpr.rewards import RewardCalculator
+from src.orchestration.jo_vdpr.action_codec import decode_pair_action, encode_pair_action
 from src.orchestration.jo_vdpr.topology import (
     TopologyManager,
     compute_request_latency,
@@ -96,16 +97,10 @@ class JOVDPREnv(gym.Env):
         self.reward_calc.update_lambda_latency(new_lambda)
 
     def _encode_action(self, v1: int, v2: int) -> int:
-        return int(v1) * self.num_nodes + int(v2)
+        return encode_pair_action(v1, v2, self.num_nodes)
 
     def _decode_action(self, action) -> tuple[int, int]:
-        if np.isscalar(action):
-            a = int(action)
-            return a // self.num_nodes, a % self.num_nodes
-        if isinstance(action, np.ndarray) and action.ndim == 0:
-            a = int(action.item())
-            return a // self.num_nodes, a % self.num_nodes
-        return int(action[0]), int(action[1])
+        return decode_pair_action(action, self.num_nodes)
 
     def _load_request_for_step(self, step: int) -> None:
         row = self.repo.get_next_entry(step)
@@ -115,12 +110,12 @@ class JOVDPREnv(gym.Env):
         msd_req = row['msd']
         svc = row.get('service_type', 'Data')
 
-        if self.traffic_scenario == 'bursty':
+        if self.traffic_scenario in {'bursty', 'chaos'}:
             hour = (step // 500) % 24
             peak = (8 <= hour < 10) or (17 <= hour < 20)
             mult = 2.0 if peak else 0.7
             cpu_req = min(self.max_cpu * 0.85, cpu_req * mult)
-        elif self.traffic_scenario == 'heavy_tail':
+        if self.traffic_scenario in {'heavy_tail', 'chaos'}:
             rng = self.np_random if self.np_random is not None else np.random
             if rng.random() < 0.2:
                 cpu_req = min(self.max_cpu * 0.70, cpu_req * 3.5)

@@ -11,7 +11,14 @@ from .models import RequestRecord, RequestSpec, ScenarioDefinition
 from .runner import stable_name_offset
 
 
-BASELINE_ALGORITHMS = ["jo_vppm", "heuristic", "greedy", "decoupled"]
+BASELINE_ALGORITHMS = [
+    "jo_vppm",
+    "heuristic",
+    "greedy",
+    "decoupled",
+    "greedy_protected",
+    "decoupled_protected",
+]
 
 
 class BaselineSimulator:
@@ -82,6 +89,7 @@ class BaselineSimulator:
             v_place = None
             v_route = None
             method_used = algorithm
+            failure = ""
 
             if spec.alert_flag:
                 state_manager.set_forecast_alert(True)
@@ -98,17 +106,20 @@ class BaselineSimulator:
                     v_place = int(decision.v_place)
                     v_route = int(decision.v_route)
                     method_used = "Resilience Heuristic"
-                elif algorithm == "decoupled":
+                elif algorithm in {"decoupled", "decoupled_protected"}:
                     v_place, v_route = self._unsafe_decoupled_choice(snapshot, spec)
                     method_used = "Decoupled Heuristic"
-                elif algorithm == "greedy":
+                    if algorithm.endswith("_protected"):
+                        method_used += "+Admission"
+                elif algorithm in {"greedy", "greedy_protected"}:
                     v_place, v_route = self._greedy_choice(snapshot, spec)
                     method_used = "Greedy"
+                    if algorithm.endswith("_protected"):
+                        method_used += "+Admission"
 
+                failure = self._constraint_failure(snapshot, v_place, v_route, spec)
                 if algorithm in {"greedy", "decoupled"}:
-                    failure = self._constraint_failure(snapshot, v_place, v_route, spec)
                     if failure == "msd_violation":
-                        msd_violation = True
                         reject_reason = "msd_violation"
                     elif failure:
                         reject_reason = failure
@@ -185,6 +196,8 @@ class BaselineSimulator:
                     routing_node_id=v_route,
                     sid_count=spec.msd_req if accepted else 0,
                     msd_violation=msd_violation,
+                    candidate_hard_infeasible=bool(failure),
+                    candidate_reject_reason=failure,
                     reject_reason="" if accepted else reject_reason,
                     tags=dict(spec.tags),
                 )

@@ -69,6 +69,8 @@ class RequestRecord:
     routing_node_name: str = ""
     sid_count: int = 0
     msd_violation: bool = False
+    candidate_hard_infeasible: bool = False
+    candidate_reject_reason: str = ""
     reject_reason: str = ""
     migration_status: str = ""
     migration_old_vnf: str = ""
@@ -100,6 +102,7 @@ class ScenarioSummary:
     msd_drop_delta: int
     mean_sid_count: float
     final_active_vnfs: int
+    candidate_hard_infeasible_rate: float = 0.0
     notes: str = ""
 
 

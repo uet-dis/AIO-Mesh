@@ -18,6 +18,9 @@ SAFE_REJECT_REASONS = {
     "heuristic_msd_or_capacity_route_failed",
     "resilience_no_safe_pair_available",
     "greedy_no_feasible_node",
+    "msd_violation",
+    "cpu_capacity",
+    "ram_capacity",
 }
 
 
@@ -58,6 +61,7 @@ def summarize_records(
         if (not row.accepted and row.reject_reason in SAFE_REJECT_REASONS)
     )
     msd_violations = sum(1 for row in rows if row.msd_violation)
+    candidate_hard_infeasible = sum(1 for row in rows if row.candidate_hard_infeasible)
     latencies = [row.decision_latency_ms for row in rows if row.reject_reason != "timeout"]
     sid_counts = [row.sid_count for row in rows if row.accepted]
     service_latencies = [row.service_latency_ms for row in rows if row.accepted and row.service_latency_ms > 0]
@@ -86,4 +90,5 @@ def summarize_records(
         msd_drop_delta=msd_drop_delta,
         mean_sid_count=mean(sid_counts) if sid_counts else 0.0,
         final_active_vnfs=final_active_vnfs,
+        candidate_hard_infeasible_rate=(candidate_hard_infeasible / generated * 100.0) if generated else 0.0,
     )

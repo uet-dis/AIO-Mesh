@@ -35,9 +35,12 @@ class AlgorithmBenchmarkConfig:
     output_dir: Path = Path("results/benchmark_algorithm")
     data_path: Path = Path("data/processed/real_telecom_combined.csv")
     model_root: Path = Path("results/models")
+    evaluation_seeds: List[int] | None = None
 
     @property
     def seeds(self) -> List[int]:
+        if self.evaluation_seeds is not None:
+            return list(self.evaluation_seeds)
         return [42] if self.single_seed else EVAL_SEEDS
 
     @property
@@ -78,7 +81,7 @@ def scenario_jobs(scenario: str, load: str) -> List[Tuple[str, str, str]]:
     if scenario == "burst_surge":
         return [("burst_surge", "bursty", "stress")]
     if scenario == "chaos":
-        return [("chaos", "heavy_tail", "stress")]
+        return [("chaos", "chaos", "stress")]
     if scenario == "all":
         return [(name, name, load) for name in ["uniform", "bursty", "heavy_tail"]]
     if scenario == "thesis":
@@ -86,12 +89,12 @@ def scenario_jobs(scenario: str, load: str) -> List[Tuple[str, str, str]]:
             ("normal_load", "uniform", "normal"),
             ("elephant_stress", "heavy_tail", "stress"),
             ("burst_surge", "bursty", "stress"),
-            ("chaos", "heavy_tail", "stress"),
+            ("chaos", "chaos", "stress"),
         ]
     if scenario == "ablation":
         return [
             ("elephant_stress", "heavy_tail", "stress"),
             ("burst_surge", "bursty", "stress"),
-            ("chaos", "heavy_tail", "stress"),
+            ("chaos", "chaos", "stress"),
         ]
     raise ValueError(f"Unsupported scenario: {scenario}")

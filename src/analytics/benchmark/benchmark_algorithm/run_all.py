@@ -25,7 +25,7 @@ from .metrics import RunMetrics
 from .plotting import plot_dashboard, plot_latency_cdf, plot_rolling_acceptance
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run offline JO-VPPM algorithm benchmarks.")
     parser.add_argument("--topology", default="vietnam", choices=["vietnam", "nsfnet", "geant2", "all"])
     parser.add_argument("--scenario", default="uniform", choices=SCENARIO_CHOICES)
@@ -33,6 +33,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", default="v11")
     parser.add_argument("--steps", type=int, default=3000)
     parser.add_argument("--single-seed", action="store_true")
+    parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Explicit evaluation seeds; mutually exclusive with --single-seed.",
+    )
     parser.add_argument("--skip-exhaustive", action="store_true")
     parser.add_argument("--workers", type=int, default=1, help="Parallel seed workers per topology/scenario job.")
     parser.add_argument("--sla-scale", type=float, default=1.0, help="Multiply SLA thresholds; use <1 for stricter SLA.")
@@ -40,7 +47,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", default="data/processed/real_telecom_combined.csv")
     parser.add_argument("--model-root", default="results/models")
     parser.add_argument("--ablation", action="store_true", help="Run HARP ablation study instead of baseline comparison.")
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.seeds is not None:
+        if len(set(args.seeds)) != len(args.seeds):
+            parser.error("--seeds values must be unique")
+        if args.single_seed:
+            parser.error("--seeds cannot be combined with --single-seed")
+    return args
 
 
 def main() -> None:
@@ -58,6 +71,7 @@ def main() -> None:
         output_dir=Path(args.output_dir),
         data_path=Path(args.data_path),
         model_root=Path(args.model_root),
+        evaluation_seeds=args.seeds,
     )
     is_ablation = args.ablation
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 
 from src.orchestration.jo_vdpr.topology import DEFAULT_TOPO, TopologyManager
+from src.orchestration.jo_vdpr.action_codec import encode_pair_action
 
 # =============================================================================
 # CONSTANTS (TUAN THU .ai/ARCHITECTURE.MD)
@@ -448,11 +449,15 @@ class NetworkStateManager:
 
     def action_mask(self, request: Any) -> np.ndarray:
         with self._lock:
-            masks = np.zeros(self.num_nodes * 2, dtype=bool)
-            for node in range(self.num_nodes):
-                feasible = self.can_reserve(node, request.cpu_req, request.ram_req, request.msd_req)
-                masks[node] = feasible
-                masks[self.num_nodes + node] = feasible
+            masks = np.zeros(self.num_nodes * self.num_nodes, dtype=bool)
+            for v_place in range(self.num_nodes):
+                for v_route in range(self.num_nodes):
+                    feasible = all(
+                        self.can_reserve(node, request.cpu_req, request.ram_req, request.msd_req)
+                        for node in {v_place, v_route}
+                    )
+                    if feasible:
+                        masks[encode_pair_action(v_place, v_route, self.num_nodes)] = True
             return masks
 
     def to_observation(self, request: Any) -> np.ndarray:
@@ -465,7 +470,8 @@ class NetworkStateManager:
         node_feat_dim, req_dim, svc_dim, gc_dim = 6, 3, 5, 5
         
         obs = np.zeros((self.num_nodes * node_feat_dim + req_dim + svc_dim + gc_dim), dtype=np.float32)
-        geo_norm = topology.lats / (np.max(topology.lats) + 1e-9)
+        geo_context = topology.get_geographic_context()
+        geo_norm = geo_context / (np.max(geo_context) + 1e-9)
 
         for node in range(self.num_nodes):
             cpu_u = snap.state[node, 0] / 100.0 
@@ -483,11 +489,16 @@ class NetworkStateManager:
         obs[br+3+svc_map.get(request.service_type, 2)] = 1.0
         
         gc_base = br + req_dim + svc_dim
+        msd_residual = np.maximum(
+            0.0,
+            1.0 - snap.state[:, 2] / topology.msd_limits,
+        )
+        srv6_max_overhead_ms = 0.05 * 6
         obs[gc_base:gc_base+5] = [
             snap.avg_cpu, 
-            snap.avg_msd_usage, 
+            float(np.mean(msd_residual)),
             obs[br], # req_intensity
-            (request.msd_req * 0.05) / 0.3, # srv6_norm
+            (request.msd_req * 0.05) / srv6_max_overhead_ms, # srv6_norm
             request.msd_req / float(topology.msd_limits.max()) # chain_norm
         ]
         return np.clip(obs, 0.0, 1.0)
