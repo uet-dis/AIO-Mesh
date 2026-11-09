@@ -28,7 +28,7 @@ if 'numpy._core' not in sys.modules:
     sys.modules['numpy._core.multiarray'] = np
     sys.modules['numpy._core.umath'] = np
 
-from src.ai.heuristic import ActionChoice, get_resilience_safe_action
+from src.ai.heuristic import ActionChoice, HardConstraintError, get_resilience_safe_action
 from src.core.state_manager import NetworkStateManager
 from src.orchestration.jo_vdpr.action_codec import decode_pair_action
 from src.orchestration.jo_vdpr.topology import TopologyManager
@@ -335,6 +335,16 @@ class DGRLAgent:
                     f"runtime action mask has shape {masks.shape}; "
                     f"expected {(self.num_nodes * self.num_nodes,)}"
                 )
+            if not np.any(masks):
+                # Never ask MaskablePPO to sample from an all-invalid distribution.
+                # The safe search either finds a pair missed by the mask or raises
+                # HardConstraintError, which the API maps to NO_SAFE_ACTION.
+                choice = get_resilience_safe_action(state_manager.snapshot(), request)
+                return DGRLDecision(
+                    choice=choice,
+                    model_loaded=False,
+                    fallback_reason="empty_runtime_action_mask_safe_search",
+                )
             
             # MaskablePPO.predict yêu cầu masks có cùng batch size với obs
             action, _ = model.predict(obs_normalized, action_masks=masks[None, :], deterministic=True)
@@ -347,6 +357,8 @@ class DGRLAgent:
                 ),
                 model_loaded=True,
             )
+        except HardConstraintError:
+            raise
         except Exception as exc:
             logger.warning("DRL prediction failed; using safe search fallback: %s", exc)
             snap = state_manager.snapshot()

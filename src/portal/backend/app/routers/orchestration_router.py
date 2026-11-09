@@ -139,6 +139,11 @@ async def orchestrate_sfc(request: SFCRequest, background_tasks: BackgroundTasks
                 detail={"status": "error", "code": "NO_SAFE_ACTION", "message": error or "Hardware constraints violated."}
             )
 
+    except HardConstraintError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"status": "error", "code": "NO_SAFE_ACTION", "message": str(e)},
+        ) from e
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         logger.error(f"Orchestration internal error: {e}")
