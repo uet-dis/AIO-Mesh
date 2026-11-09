@@ -56,6 +56,11 @@ class ScenarioRunner:
                 record.migration_wait_s = wait_s
                 record.latest_pipeline_name = str(pipeline.get("name", ""))
                 record.latest_pipeline_status = str(pipeline.get("overallStatus", ""))
+                normalized_pipeline_status = record.latest_pipeline_status.lower()
+                if normalized_pipeline_status == "succeeded":
+                    record.deployment_status = "pipeline_succeeded"
+                elif normalized_pipeline_status in {"failed", "cancelled", "canceled"}:
+                    record.deployment_status = "pipeline_failed"
 
             records.append(record)
 
@@ -157,6 +162,11 @@ class ScenarioRunner:
         placement_id = placement.get("id") if isinstance(placement, dict) else None
         routing_id = routing.get("id") if isinstance(routing, dict) else None
         sid_count = len(sid_stack) if isinstance(sid_stack, list) else 0
+        admission_reason = str(detail.get("message", "")) if detail else ""
+        admission_reason_lower = admission_reason.lower()
+        candidate_cpu_infeasible = "cpu" in admission_reason_lower
+        candidate_ram_infeasible = "ram" in admission_reason_lower
+        candidate_msd_infeasible = "msd" in admission_reason_lower
         service_latency = 0.0
         if accepted and placement_id is not None and routing_id is not None:
             cpu_utils = {
@@ -176,6 +186,8 @@ class ScenarioRunner:
             algorithm="hybrid_runtime",
             scenario=scenario_name,
             step=step,
+            request_id=f"{scenario_name}:{self.config.seed}:{step}",
+            seed=self.config.seed,
             accepted=accepted,
             status_code=status_code,
             decision_latency_ms=round(latency_ms, 3),
@@ -195,9 +207,21 @@ class ScenarioRunner:
             routing_node_id=routing_id,
             routing_node_name=str(routing.get("name", "")) if isinstance(routing, dict) else "",
             sid_count=sid_count,
-            msd_violation=reject_reason == "msd_violation",
+            msd_violation="msd" in str(detail.get("message", "")).lower(),
+            admitted_msd_violation=bool(data.get("admitted_msd_violation", False)) if isinstance(data, dict) else False,
+            candidate_hard_infeasible=(candidate_cpu_infeasible or candidate_ram_infeasible or candidate_msd_infeasible),
+            candidate_cpu_infeasible=candidate_cpu_infeasible,
+            candidate_ram_infeasible=candidate_ram_infeasible,
+            candidate_msd_infeasible=candidate_msd_infeasible,
             reject_reason=reject_reason,
+            candidate_reject_reason=admission_reason if candidate_cpu_infeasible or candidate_ram_infeasible or candidate_msd_infeasible else "",
+            admission_reason=admission_reason,
             migration_status=str(migration.get("status", "")) if isinstance(migration, dict) else "",
+            deployment_status=(
+                str(migration.get("status", "triggered"))
+                if isinstance(migration, dict)
+                else "not_observed"
+            ),
             migration_old_vnf=str(migration.get("old_vnf", "")) if isinstance(migration, dict) else "",
             migration_new_vnf=str(migration.get("new_vnf", "")) if isinstance(migration, dict) else "",
             tags=dict(spec.tags),

@@ -109,16 +109,16 @@ def run_experiment(output_dir: Path, seeds: list[int], steps: int = 0) -> None:
             }
             for algorithm in BASELINE_ALGORITHMS
         }
-        matched_seeds = [seed for seed in seeds if seed in by_algorithm["jo_vppm"] and seed in by_algorithm["heuristic"]]
+        matched_seeds = [seed for seed in seeds if seed in by_algorithm["jo_vppm"] and seed in by_algorithm["saf_h"]]
         paired = paired_statistics(
             [float(by_algorithm["jo_vppm"][seed]["acceptance_rate"]) for seed in matched_seeds],
-            [float(by_algorithm["heuristic"][seed]["acceptance_rate"]) for seed in matched_seeds],
+            [float(by_algorithm["saf_h"][seed]["acceptance_rate"]) for seed in matched_seeds],
         )
         stat_rows.append({"scenario": scenario.name, **paired})
     adjusted = holm_adjust([float(row["p_value"]) for row in stat_rows])
     for row, p_adjusted in zip(stat_rows, adjusted):
         row["p_holm"] = p_adjusted
-    _write_csv(output_dir / "harp_vs_safe_heuristic_paired.csv", stat_rows)
+    _write_csv(output_dir / "harp_vs_saf_h_paired.csv", stat_rows)
 
     model_path = Path(__import__("src.ai.dgrl_agent", fromlist=["DEFAULT_MODEL_PATH"]).DEFAULT_MODEL_PATH)
     metadata = {
@@ -127,7 +127,7 @@ def run_experiment(output_dir: Path, seeds: list[int], steps: int = 0) -> None:
         "seeds": seeds,
         "scenarios": [scenario.name for scenario in scenarios],
         "algorithms": BASELINE_ALGORITHMS,
-        "primary_comparison": "jo_vppm vs heuristic; same generated request trace and shared NetworkStateManager admission",
+        "primary_comparison": "jo_vppm vs saf_h; same generated request trace and shared NetworkStateManager admission",
         "checkpoint_path": str(model_path),
         "checkpoint_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest() if model_path.exists() else None,
         "workload_scenario_source": "src/analytics/benchmark/benchmark_testbed/scenarios",

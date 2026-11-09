@@ -49,6 +49,8 @@ class RequestRecord:
     algorithm: str
     scenario: str
     step: int
+    request_id: str
+    seed: int
     accepted: bool
     status_code: int
     decision_latency_ms: float
@@ -69,8 +71,14 @@ class RequestRecord:
     routing_node_name: str = ""
     sid_count: int = 0
     msd_violation: bool = False
+    admitted_msd_violation: bool = False
     candidate_hard_infeasible: bool = False
+    candidate_cpu_infeasible: bool = False
+    candidate_ram_infeasible: bool = False
+    candidate_msd_infeasible: bool = False
     candidate_reject_reason: str = ""
+    admission_reason: str = ""
+    deployment_status: str = "not_observed"
     reject_reason: str = ""
     migration_status: str = ""
     migration_old_vnf: str = ""
@@ -104,6 +112,14 @@ class ScenarioSummary:
     final_active_vnfs: int
     candidate_hard_infeasible_rate: float = 0.0
     notes: str = ""
+    safe_accepted: int = 0
+    safe_acceptance_rate: float = 0.0
+    candidate_cpu_infeasible_rate: float = 0.0
+    candidate_ram_infeasible_rate: float = 0.0
+    candidate_msd_infeasible_rate: float = 0.0
+    deployment_triggered: int = 0
+    pipeline_succeeded: int = 0
+    pipeline_failed: int = 0
 
 
 RequestFactory = Callable[[int, int, "RandomLike"], Optional[RequestSpec]]

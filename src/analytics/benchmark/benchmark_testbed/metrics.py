@@ -60,15 +60,24 @@ def summarize_records(
         1 for row in rows
         if (not row.accepted and row.reject_reason in SAFE_REJECT_REASONS)
     )
-    msd_violations = sum(1 for row in rows if row.msd_violation)
+    msd_violations = sum(1 for row in rows if row.admitted_msd_violation)
     candidate_hard_infeasible = sum(1 for row in rows if row.candidate_hard_infeasible)
+    candidate_cpu_infeasible = sum(1 for row in rows if row.candidate_cpu_infeasible)
+    candidate_ram_infeasible = sum(1 for row in rows if row.candidate_ram_infeasible)
+    candidate_msd_infeasible = sum(1 for row in rows if row.candidate_msd_infeasible)
+    safe_accepted = sum(1 for row in rows if row.accepted and not row.admitted_msd_violation)
     latencies = [row.decision_latency_ms for row in rows if row.reject_reason != "timeout"]
     sid_counts = [row.sid_count for row in rows if row.accepted]
     service_latencies = [row.service_latency_ms for row in rows if row.accepted and row.service_latency_ms > 0]
     migration_triggers = sum(1 for row in rows if row.migration_status)
     successful_pipelines = sum(
         1 for row in rows
-        if row.latest_pipeline_status.lower() == "succeeded"
+        if row.deployment_status == "pipeline_succeeded"
+    )
+    failed_pipelines = sum(1 for row in rows if row.deployment_status == "pipeline_failed")
+    deployment_triggered = sum(
+        1 for row in rows
+        if row.deployment_status in {"triggered", "deploying", "pipeline_succeeded", "pipeline_failed"}
     )
     return ScenarioSummary(
         algorithm=algorithm,
@@ -91,4 +100,12 @@ def summarize_records(
         mean_sid_count=mean(sid_counts) if sid_counts else 0.0,
         final_active_vnfs=final_active_vnfs,
         candidate_hard_infeasible_rate=(candidate_hard_infeasible / generated * 100.0) if generated else 0.0,
+        safe_accepted=safe_accepted,
+        safe_acceptance_rate=(safe_accepted / generated * 100.0) if generated else 0.0,
+        candidate_cpu_infeasible_rate=(candidate_cpu_infeasible / generated * 100.0) if generated else 0.0,
+        candidate_ram_infeasible_rate=(candidate_ram_infeasible / generated * 100.0) if generated else 0.0,
+        candidate_msd_infeasible_rate=(candidate_msd_infeasible / generated * 100.0) if generated else 0.0,
+        deployment_triggered=deployment_triggered,
+        pipeline_succeeded=successful_pipelines,
+        pipeline_failed=failed_pipelines,
     )

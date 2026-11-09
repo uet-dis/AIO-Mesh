@@ -13,6 +13,7 @@ from .runner import stable_name_offset
 
 BASELINE_ALGORITHMS = [
     "jo_vppm",
+    "saf_h",
     "heuristic",
     "greedy",
     "decoupled",
@@ -90,6 +91,7 @@ class BaselineSimulator:
             v_route = None
             method_used = algorithm
             failure = ""
+            admission_reason = ""
 
             if spec.alert_flag:
                 state_manager.set_forecast_alert(True)
@@ -101,6 +103,9 @@ class BaselineSimulator:
                     v_place = int(decision.choice.v_place)
                     v_route = int(decision.choice.v_route)
                     method_used = "JO-VPPM" if decision.model_loaded else "JO-VPPM fallback"
+                elif algorithm == "saf_h":
+                    v_place, v_route = self._saf_h_choice(snapshot, spec)
+                    method_used = "SAF-H (shared admission)"
                 elif algorithm == "heuristic":
                     decision = get_resilience_safe_action(snapshot, spec)
                     v_place = int(decision.v_place)
@@ -118,12 +123,12 @@ class BaselineSimulator:
                         method_used += "+Admission"
 
                 sid_depth = state_manager.required_sid_depth(v_place, v_route, spec.msd_req)
-                failure = self._constraint_failure(snapshot, v_place, v_route, spec, sid_depth)
+                failures = self._constraint_failures(snapshot, v_place, v_route, spec, sid_depth)
+                failure = failures[0] if failures else ""
                 if algorithm in {"greedy", "decoupled"}:
-                    if failure == "msd_violation":
-                        reject_reason = "msd_violation"
-                    elif failure:
+                    if failure:
                         reject_reason = failure
+                        admission_reason = f"candidate_infeasible:{'|'.join(failures)}"
                     else:
                         accepted, error = state_manager.try_reserve(
                             v_place,
@@ -135,6 +140,7 @@ class BaselineSimulator:
                         )
                         if not accepted:
                             reject_reason = error or "reserve_failed"
+                            admission_reason = reject_reason
                 else:
                     accepted, error = state_manager.try_reserve(
                         v_place,
@@ -146,10 +152,13 @@ class BaselineSimulator:
                     )
                     if not accepted:
                         reject_reason = error or "reserve_failed"
+                        admission_reason = reject_reason
             except HardConstraintError as exc:
                 reject_reason = str(exc)
+                admission_reason = reject_reason
             except Exception as exc:
                 reject_reason = f"error:{exc}"
+                admission_reason = reject_reason
 
             latency_ms = round((time.perf_counter() - start) * 1000.0, 3)
             service_latency_ms = 0.0
@@ -179,6 +188,8 @@ class BaselineSimulator:
                     algorithm=algorithm,
                     scenario=scenario.name,
                     step=step,
+                    request_id=f"{scenario.name}:{self.seed}:{step}",
+                    seed=self.seed,
                     accepted=accepted,
                     status_code=200 if accepted else 409,
                     decision_latency_ms=latency_ms,
@@ -196,9 +207,15 @@ class BaselineSimulator:
                     placement_node_id=v_place,
                     routing_node_id=v_route,
                     sid_count=state_manager.required_sid_depth(v_place, v_route, spec.msd_req) if accepted else 0,
-                    msd_violation=msd_violation,
+                    msd_violation="msd_violation" in failures,
+                    admitted_msd_violation=msd_violation,
                     candidate_hard_infeasible=bool(failure),
+                    candidate_cpu_infeasible="cpu_capacity" in failures,
+                    candidate_ram_infeasible="ram_capacity" in failures,
+                    candidate_msd_infeasible="msd_violation" in failures,
                     candidate_reject_reason=failure,
+                    admission_reason=admission_reason,
+                    deployment_status="simulation_only" if accepted else "not_attempted",
                     reject_reason="" if accepted else reject_reason,
                     tags=dict(spec.tags),
                 )
@@ -232,6 +249,34 @@ class BaselineSimulator:
         return int(best_node), int(best_node)
 
     @staticmethod
+    def _saf_h_choice(snapshot, spec) -> Tuple[int, int]:
+        """Feasible-pair search using the SAF-H cost used by algorithm benchmarks."""
+        from src.ai.heuristic import HardConstraintError
+
+        state = snapshot.state
+        best_pair = None
+        best_cost = float("inf")
+        for place in range(len(snapshot.node_names)):
+            for route in range(len(snapshot.node_names)):
+                sid_depth = int(spec.msd_req) + int(snapshot.hop_matrix[place, route])
+                if BaselineSimulator._constraint_failures(
+                    snapshot, place, route, spec, sid_depth
+                ):
+                    continue
+                cpu_util = (float(state[place, 0]) + spec.cpu_req) / 100.0
+                cost = (
+                    float(snapshot.latency_matrix[place, route]) * 0.5
+                    + cpu_util * 100.0
+                    + int(snapshot.hop_matrix[place, route]) * 5.0
+                )
+                if cost < best_cost:
+                    best_cost = cost
+                    best_pair = (place, route)
+        if best_pair is None:
+            raise HardConstraintError("saf_h_no_feasible_pair")
+        return int(best_pair[0]), int(best_pair[1])
+
+    @staticmethod
     def _unsafe_decoupled_choice(snapshot, spec) -> Tuple[int, int]:
         state = snapshot.state
         place_candidates = [
@@ -253,13 +298,14 @@ class BaselineSimulator:
         return int(v_place), int(v_route)
 
     @staticmethod
-    def _constraint_failure(snapshot, v_place: int, v_route: int, spec, sid_depth: int) -> str:
+    def _constraint_failures(snapshot, v_place: int, v_route: int, spec, sid_depth: int) -> List[str]:
         state = snapshot.state
         place, route = int(v_place), int(v_route)
-        if float(state[route, 2]) + sid_depth > float(snapshot.msd_limits[route]):
-            return "msd_violation"
+        failures: List[str] = []
         if float(state[place, 0]) + spec.cpu_req > 100.0:
-            return "cpu_capacity"
+            failures.append("cpu_capacity")
         if float(state[place, 1]) + spec.ram_req > 100.0:
-            return "ram_capacity"
-        return ""
+            failures.append("ram_capacity")
+        if float(state[route, 2]) + sid_depth > float(snapshot.msd_limits[route]):
+            failures.append("msd_violation")
+        return failures
