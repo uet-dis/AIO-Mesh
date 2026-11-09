@@ -21,9 +21,13 @@ router = APIRouter(tags=["Hybrid Orchestration"])
 
 MIGRATION_LOCK = asyncio.Lock()
 
-def _generate_srv6_sids(v_place: int, v_route: int, msd_req: int) -> List[str]:
-    """Generate a bounded SRv6 segment list for the selected action."""
-    sid_count = max(1, int(msd_req))
+def _generate_srv6_sids(v_place: int, v_route: int, msd_req: int, state_manager) -> List[str]:
+    """Generate a depth-matched placeholder SID list for the selected pair.
+
+    This models service SID count plus topology hop count for admission. It is
+    not shortest-path reconstruction or a deployable SRv6 policy.
+    """
+    sid_count = max(1, state_manager.required_sid_depth(v_place, v_route, msd_req))
     nodes = [int(v_place)]
     if sid_count > 1:
         nodes.extend([int(v_route)] * (sid_count - 1))
@@ -108,7 +112,7 @@ async def orchestrate_sfc(request: SFCRequest, background_tasks: BackgroundTasks
             branch = "drl"
             method = "Hybrid:DRL"
 
-        sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req)
+        sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req, state_manager)
         
         # Phase 7: Generate unique VNF name for tracking
         import uuid
@@ -124,7 +128,7 @@ async def orchestrate_sfc(request: SFCRequest, background_tasks: BackgroundTasks
         if not accepted and branch == "heuristic":
             dgrl_decision = get_dgrl_agent().get_action(state_manager, request)
             choice = dgrl_decision.choice
-            sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req)
+            sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req, state_manager)
             accepted, error = state_manager.try_reserve(
                 choice.v_place, choice.v_route, request.cpu_req, request.ram_req, len(sid_stack),
                 vnf_name=vnf_name

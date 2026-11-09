@@ -25,17 +25,26 @@ class ActionChoice:
 
 def _node_feasible(snapshot: NetworkSnapshot, node: int, request: Any) -> bool:
     state = snapshot.state
-    msd_limits = snapshot.msd_limits
     return bool(
         state[node, 0] + request.cpu_req <= MAX_CPU
         and state[node, 1] + request.ram_req <= MAX_RAM
-        and state[node, 2] + request.msd_req <= msd_limits[node]
     )
 
 
 def _pair_feasible(snapshot: NetworkSnapshot, v_place: int, v_route: int, request: Any) -> bool:
-    touched = {int(v_place), int(v_route)}
-    return all(_node_feasible(snapshot, node, request) for node in touched)
+    place, route = int(v_place), int(v_route)
+    state = snapshot.state
+    if not (
+        state[place, 0] + request.cpu_req <= MAX_CPU
+        and state[place, 1] + request.ram_req <= MAX_RAM
+    ):
+        return False
+    # The simulator models CPU/RAM at placement and full SID depth at route.
+    hop_count = int(snapshot.hop_matrix[place, route])
+    if hop_count >= 99:
+        return False
+    required_sid_depth = int(request.msd_req) + hop_count
+    return bool(state[route, 2] + required_sid_depth <= snapshot.msd_limits[route])
 
 
 def get_decoupled_action(snapshot: NetworkSnapshot, request: Any) -> ActionChoice:
@@ -93,9 +102,10 @@ def get_resilience_safe_action(snapshot: NetworkSnapshot, request: Any) -> Actio
             if not _pair_feasible(snapshot, v_place, v_route, request):
                 continue
 
-            touched = {v_place, v_route}
-            min_cpu_headroom = min(MAX_CPU - (state[node, 0] + request.cpu_req) for node in touched)
-            min_msd_headroom = min(msd_limits[node] - (state[node, 2] + request.msd_req) for node in touched)
+            hop_count = int(snapshot.hop_matrix[v_place, v_route])
+            sid_depth = int(request.msd_req) + hop_count
+            min_cpu_headroom = MAX_CPU - (state[v_place, 0] + request.cpu_req)
+            min_msd_headroom = msd_limits[v_route] - (state[v_route, 2] + sid_depth)
             latency_cost = float(latency_matrix[v_place][v_route])
             spread_bonus = 2.0 if v_place != v_route else 0.0
             score = min_cpu_headroom + (8.0 * min_msd_headroom) + spread_bonus - (0.1 * latency_cost)

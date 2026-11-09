@@ -34,6 +34,7 @@ class NetworkSnapshot:
     state: np.ndarray 
     latency_matrix: np.ndarray
     adj_matrix: np.ndarray
+    hop_matrix: np.ndarray
     msd_limits: np.ndarray
     node_names: List[str]
     forecast_alerts: List[bool]
@@ -99,12 +100,16 @@ class NetworkStateManager:
                 state=state,
                 latency_matrix=self.topology.latency_matrix,
                 adj_matrix=self.topology.adj_matrix,
+                hop_matrix=self.topology.hop_matrix,
                 msd_limits=self.topology.msd_limits,
                 node_names=self.topology.names,
                 forecast_alerts=[bool(x) for x in self._forecast_alerts],
             )
 
     def can_reserve(self, node: int, cpu_req: float, ram_req: float, msd_req: int) -> bool:
+        node = int(node)
+        if not 0 <= node < self.num_nodes:
+            return False
         cpu_used = self._state[node, 0]
         ram_used = self._state[node, 1]
         msd_used = self._state[node, 2]
@@ -116,6 +121,24 @@ class NetworkStateManager:
             and msd_used + msd_req <= msd_limit
         )
 
+    def required_sid_depth(self, v_place: int, v_route: int, service_sid_count: int) -> int:
+        """Return the modeled full SID-list depth for one placement/route pair.
+
+        The simulator's contract counts service SIDs plus topology hops. This is
+        a depth estimate for admission; it does not reconstruct a forwarding path.
+        """
+        place, route = int(v_place), int(v_route)
+        if not (0 <= place < self.num_nodes and 0 <= route < self.num_nodes):
+            raise ValueError("placement and route must be valid topology node indices")
+        if isinstance(service_sid_count, bool) or int(service_sid_count) != service_sid_count:
+            raise ValueError("service SID count must be an integer")
+        if service_sid_count < 0:
+            raise ValueError("service SID count must be non-negative")
+        hops = self.topology.get_hop_distance(place, route)
+        if hops >= 99:
+            raise ValueError("placement and route are disconnected in the modeled topology")
+        return int(service_sid_count) + int(hops)
+
     def try_reserve(
         self,
         v_place: int,
@@ -126,30 +149,47 @@ class NetworkStateManager:
         vnf_name: Optional[str] = None
     ) -> Tuple[bool, Optional[str]]:
         with self._lock:
-            if not self.can_reserve(v_place, cpu_req, ram_req, msd_req):
-                return False, "placement_node_full"
-            
-            if v_place != v_route:
-                if not self.can_reserve(v_route, cpu_req, ram_req, msd_req):
-                    return False, "routing_node_full"
+            try:
+                place, route = int(v_place), int(v_route)
+                cpu = float(cpu_req)
+                ram = float(ram_req)
+                sid_depth = int(msd_req)
+            except (TypeError, ValueError, OverflowError):
+                return False, "invalid_reservation_request"
+            if not (0 <= place < self.num_nodes and 0 <= route < self.num_nodes):
+                return False, "invalid_node"
+            if (
+                not math.isfinite(cpu)
+                or not math.isfinite(ram)
+                or cpu < 0
+                or ram < 0
+                or isinstance(msd_req, bool)
+                or sid_depth != msd_req
+                or sid_depth < 0
+            ):
+                return False, "invalid_reservation_request"
+            if vnf_name and (vnf_name in self._active_vnfs or vnf_name in self._pending_reservations):
+                return False, "reservation_exists"
 
-            self._state[v_place, 0] += cpu_req
-            self._state[v_place, 1] += ram_req
-            self._state[v_place, 2] += msd_req
-            
-            if v_place != v_route:
-                self._state[v_route, 0] += cpu_req
-                self._state[v_route, 1] += ram_req
-                self._state[v_route, 2] += msd_req
+            # CPU and RAM belong to the VNF placement node. The modeled full
+            # SID list belongs to the routing node (including when they coincide).
+            if not self.can_reserve(place, cpu, ram, 0):
+                return False, "placement_node_full"
+            if not self.can_reserve(route, 0, 0, sid_depth):
+                return False, "routing_node_full"
+
+            self._state[place, 0] += cpu
+            self._state[place, 1] += ram
+            self._state[route, 2] += sid_depth
             
             if vnf_name:
                 self._active_vnfs[vnf_name] = {
-                    "v_place": v_place, "v_route": v_route,
-                    "cpu_req": cpu_req, "ram_req": ram_req, "msd_req": msd_req
+                    "v_place": place, "v_route": route,
+                    "cpu_req": cpu, "ram_req": ram, "msd_req": sid_depth
                 }
                 self._pending_reservations[vnf_name] = {
-                    "v_place": v_place, "v_route": v_route,
-                    "cpu_req": cpu_req, "ram_req": ram_req, "msd_req": msd_req,
+                    "v_place": place, "v_route": route,
+                    "cpu_req": cpu, "ram_req": ram, "msd_req": sid_depth,
                     "timestamp": time.time()
                 }
             return True, None
@@ -173,12 +213,10 @@ class NetworkStateManager:
             if vnf_name not in self._active_vnfs:
                 return
             data = self._active_vnfs.pop(vnf_name)
-            for node_key in ["v_place", "v_route"]:
-                node_id = data[node_key]
-                self._state[node_id, 0] = max(0, self._state[node_id, 0] - data["cpu_req"])
-                self._state[node_id, 1] = max(0, self._state[node_id, 1] - data["ram_req"])
-                self._state[node_id, 2] = max(0, self._state[node_id, 2] - data["msd_req"])
-                if data["v_place"] == data["v_route"]: break # Neu trung node thi thoat som
+            place, route = data["v_place"], data["v_route"]
+            self._state[place, 0] = max(0, self._state[place, 0] - data["cpu_req"])
+            self._state[place, 1] = max(0, self._state[place, 1] - data["ram_req"])
+            self._state[route, 2] = max(0, self._state[route, 2] - data["msd_req"])
 
     def free_resources(
         self,
@@ -190,10 +228,12 @@ class NetworkStateManager:
     ) -> None:
         """Release resources for TTL-based SFC expiry without a tracked VNF name."""
         with self._lock:
-            for node_id in {int(v_place), int(v_route)}:
-                self._state[node_id, 0] = max(0, self._state[node_id, 0] - cpu_req)
-                self._state[node_id, 1] = max(0, self._state[node_id, 1] - ram_req)
-                self._state[node_id, 2] = max(0, self._state[node_id, 2] - msd_req)
+            place, route = int(v_place), int(v_route)
+            if not (0 <= place < self.num_nodes and 0 <= route < self.num_nodes):
+                return
+            self._state[place, 0] = max(0, self._state[place, 0] - cpu_req)
+            self._state[place, 1] = max(0, self._state[place, 1] - ram_req)
+            self._state[route, 2] = max(0, self._state[route, 2] - msd_req)
 
     def resolve_node_id(self, vnf_name: str, location: str) -> int:
         """Map a VNF name and its location label to virtual node index 0-9."""
@@ -336,16 +376,11 @@ class NetworkStateManager:
                 ram_req = data["ram_req"]
                 msd_req = data["msd_req"]
                 
-                # Add to placement node
+                # Runtime accounting mirrors the simulator: compute/memory at
+                # placement, SID depth at routing.
                 self._state[v_place, 0] += cpu_req
                 self._state[v_place, 1] += ram_req
-                self._state[v_place, 2] += msd_req
-                
-                # Add to routing node if different
-                if v_place != v_route:
-                    self._state[v_route, 0] += cpu_req
-                    self._state[v_route, 1] += ram_req
-                    self._state[v_route, 2] += msd_req
+                self._state[v_route, 2] += msd_req
             
             # Clip state to max capacity limits
             for i in range(self.num_nodes):
@@ -451,12 +486,14 @@ class NetworkStateManager:
         with self._lock:
             masks = np.zeros(self.num_nodes * self.num_nodes, dtype=bool)
             for v_place in range(self.num_nodes):
+                if not self.can_reserve(v_place, request.cpu_req, request.ram_req, 0):
+                    continue
                 for v_route in range(self.num_nodes):
-                    feasible = all(
-                        self.can_reserve(node, request.cpu_req, request.ram_req, request.msd_req)
-                        for node in {v_place, v_route}
-                    )
-                    if feasible:
+                    try:
+                        sid_depth = self.required_sid_depth(v_place, v_route, request.msd_req)
+                    except ValueError:
+                        continue
+                    if self.can_reserve(v_route, 0, 0, sid_depth):
                         masks[encode_pair_action(v_place, v_route, self.num_nodes)] = True
             return masks
 

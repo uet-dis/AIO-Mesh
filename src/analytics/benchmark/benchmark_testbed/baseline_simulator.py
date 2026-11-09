@@ -117,7 +117,8 @@ class BaselineSimulator:
                     if algorithm.endswith("_protected"):
                         method_used += "+Admission"
 
-                failure = self._constraint_failure(snapshot, v_place, v_route, spec)
+                sid_depth = state_manager.required_sid_depth(v_place, v_route, spec.msd_req)
+                failure = self._constraint_failure(snapshot, v_place, v_route, spec, sid_depth)
                 if algorithm in {"greedy", "decoupled"}:
                     if failure == "msd_violation":
                         reject_reason = "msd_violation"
@@ -129,7 +130,7 @@ class BaselineSimulator:
                             v_route,
                             spec.cpu_req,
                             spec.ram_req,
-                            spec.msd_req,
+                            sid_depth,
                             vnf_name=f"{algorithm}-{scenario.name}-{step}",
                         )
                         if not accepted:
@@ -140,7 +141,7 @@ class BaselineSimulator:
                         v_route,
                         spec.cpu_req,
                         spec.ram_req,
-                        spec.msd_req,
+                        sid_depth,
                         vnf_name=f"{algorithm}-{scenario.name}-{step}",
                     )
                     if not accepted:
@@ -157,7 +158,7 @@ class BaselineSimulator:
                 service_latency_ms = modeled_service_latency_ms(
                     v_place,
                     v_route,
-                    spec.msd_req,
+                    state_manager.required_sid_depth(v_place, v_route, spec.msd_req),
                     float(snap_after.state[int(v_place), 0]) / 100.0,
                     float(snap_after.state[int(v_route), 0]) / 100.0,
                 )
@@ -169,7 +170,7 @@ class BaselineSimulator:
                         "v_route": v_route,
                         "cpu_req": spec.cpu_req,
                         "ram_req": spec.ram_req,
-                        "msd_req": spec.msd_req,
+                        "msd_req": state_manager.required_sid_depth(v_place, v_route, spec.msd_req),
                     }
                 )
 
@@ -194,7 +195,7 @@ class BaselineSimulator:
                     vnf_name=f"{algorithm}-{scenario.name}-{step}" if accepted else "",
                     placement_node_id=v_place,
                     routing_node_id=v_route,
-                    sid_count=spec.msd_req if accepted else 0,
+                    sid_count=state_manager.required_sid_depth(v_place, v_route, spec.msd_req) if accepted else 0,
                     msd_violation=msd_violation,
                     candidate_hard_infeasible=bool(failure),
                     candidate_reject_reason=failure,
@@ -252,14 +253,13 @@ class BaselineSimulator:
         return int(v_place), int(v_route)
 
     @staticmethod
-    def _constraint_failure(snapshot, v_place: int, v_route: int, spec) -> str:
+    def _constraint_failure(snapshot, v_place: int, v_route: int, spec, sid_depth: int) -> str:
         state = snapshot.state
-        for node in {int(v_place), int(v_route)}:
-            if float(state[node, 2]) + spec.msd_req > float(snapshot.msd_limits[node]):
-                return "msd_violation"
-        for node in {int(v_place), int(v_route)}:
-            if float(state[node, 0]) + spec.cpu_req > 100.0:
-                return "cpu_capacity"
-            if float(state[node, 1]) + spec.ram_req > 100.0:
-                return "ram_capacity"
+        place, route = int(v_place), int(v_route)
+        if float(state[route, 2]) + sid_depth > float(snapshot.msd_limits[route]):
+            return "msd_violation"
+        if float(state[place, 0]) + spec.cpu_req > 100.0:
+            return "cpu_capacity"
+        if float(state[place, 1]) + spec.ram_req > 100.0:
+            return "ram_capacity"
         return ""

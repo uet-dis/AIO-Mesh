@@ -106,9 +106,9 @@ def get_ai_status():
     return status_dict
 
 
-def _generate_srv6_sids(v_place: int, v_route: int, msd_req: int) -> List[str]:
-    """Generate a bounded SRv6 segment list for the selected action."""
-    sid_count = max(1, int(msd_req))
+def _generate_srv6_sids(v_place: int, v_route: int, msd_req: int, state_manager) -> List[str]:
+    """Generate a depth-matched placeholder list; it does not reconstruct a path."""
+    sid_count = max(1, state_manager.required_sid_depth(v_place, v_route, msd_req))
     nodes = [int(v_place)]
     if sid_count > 1:
         nodes.extend([int(v_route)] * (sid_count - 1))
@@ -179,7 +179,7 @@ def orchestrate_sfc(request: SFCRequest):
             branch = "drl"
             method = "JO-VPPM AI (Resilience Optimized)"
 
-        sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req)
+        sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req, state_manager)
         accepted, error = state_manager.try_reserve(
             choice.v_place,
             choice.v_route,
@@ -195,7 +195,7 @@ def orchestrate_sfc(request: SFCRequest):
             model_loaded = dgrl_decision.model_loaded
             branch = "drl"
             method = "JO-VPPM AI (Concurrent-State Fallback)"
-            sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req)
+            sid_stack = _generate_srv6_sids(choice.v_place, choice.v_route, request.msd_req, state_manager)
             accepted, error = state_manager.try_reserve(
                 choice.v_place,
                 choice.v_route,
