@@ -190,6 +190,7 @@ class JOVDPREnv(gym.Env):
 
     def step(self, action):
         v1, v2 = self._decode_action(action)
+        mask_stats = self.action_diagnostics(action)
 
         # ══ PHASE 1: SFC Lifecycle Tick (ALWAYS runs, even on skipped steps) ══
         # Đồng hồ hệ thống PHẢI trôi đi 1 tick mỗi step, bất kể có request hay không.
@@ -233,6 +234,7 @@ class JOVDPREnv(gym.Env):
                     'evacuation_hit': False, 'latency_violation_rate': 0.0,
                     'cpu_util_v1': 0.0, 'cpu_util_v2': 0.0,
                     'n_sids': 0, 'service_type': 'Data',
+                    **mask_stats,
                 }
 
         # ══ PHASE 3: Use request already exposed in observation/mask ══
@@ -357,10 +359,14 @@ class JOVDPREnv(gym.Env):
             'cpu_util_v2':     cpu_util_v2,
             'n_sids':          msd_total,
             'service_type':    svc,
+            'candidate_cpu_infeasible': any("CPU overflow" in error for error in errors),
+            'candidate_ram_infeasible': any("RAM overflow" in error for error in errors),
+            'candidate_msd_infeasible': has_msd_violation,
+            **mask_stats,
         }
         return self._get_obs(), float(reward), done, False, info
 
-    def action_masks(self) -> np.ndarray:
+    def _feasible_action_mask(self) -> np.ndarray:
         cpu_req = self._current_req.get('cpu', 0.0)
         ram_req = self._current_req.get('ram', 0.0)
         msd_req = self._current_req.get('msd', 1)
@@ -380,6 +386,40 @@ class JOVDPREnv(gym.Env):
                 if msd_curr + msd_req + hop_count <= self.node_msd_limits[route]:
                     masks[self._encode_action(place, route)] = True
 
+        return masks
+
+    def action_diagnostics(self, action, policy_mask=None) -> dict:
+        """Describe raw feasibility and the mask actually presented to a policy."""
+        place, route = self._decode_action(action)
+        feasible_mask = self._feasible_action_mask()
+        uses_default_mask = policy_mask is None
+        if uses_default_mask:
+            policy_mask = self.action_masks()
+        policy_mask = np.asarray(policy_mask, dtype=bool).reshape(-1)
+        if policy_mask.shape != (self.action_space.n,):
+            raise ValueError("policy mask shape does not match the discrete action space")
+        action_index = self._encode_action(place, route)
+        return {
+            "candidate_action_count": int(self.action_space.n),
+            "environment_feasible_action_count": int(feasible_mask.sum()),
+            "policy_allowed_action_count": int(policy_mask.sum()),
+            "policy_pruned_action_count": int(self.action_space.n - policy_mask.sum()),
+            "policy_pruning_rate": float(1.0 - policy_mask.mean()),
+            "mask_empty_fallback": bool(
+                uses_default_mask
+                and not feasible_mask.any()
+                and getattr(type(self), "action_masks") is JOVDPREnv.action_masks
+            ),
+            "selected_action_environment_feasible": bool(feasible_mask[action_index]),
+        }
+
+    def action_masks(self) -> np.ndarray:
+        """Return policy mask, using all actions only when the feasible set is empty.
+
+        The raw feasible-set size and empty-set fallback are exposed in step info
+        so evaluation can distinguish real pruning from this sampling fallback.
+        """
+        masks = self._feasible_action_mask()
         if not masks.any():
             masks[:] = True
         return masks

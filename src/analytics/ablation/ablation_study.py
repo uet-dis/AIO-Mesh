@@ -93,6 +93,13 @@ class AblationMetrics:
     prop_latencies: List[float] = field(default_factory=list)
     srv6_latencies: List[float] = field(default_factory=list)
     queue_latencies: List[float] = field(default_factory=list)
+    candidate_action_count: int = 0
+    policy_allowed_action_count: int = 0
+    mask_empty_fallbacks: int = 0
+    selected_action_infeasible: int = 0
+    candidate_cpu_infeasible: int = 0
+    candidate_ram_infeasible: int = 0
+    candidate_msd_infeasible: int = 0
 
     def collect(self, info: dict, reward: float) -> None:
         if info.get("skipped", False):
@@ -100,6 +107,16 @@ class AblationMetrics:
             return
 
         self.steps += 1
+        self.candidate_action_count += int(info.get("candidate_action_count", 0))
+        self.policy_allowed_action_count += int(info.get("policy_allowed_action_count", 0))
+        self.mask_empty_fallbacks += int(bool(info.get("mask_empty_fallback", False)))
+        self.selected_action_infeasible += int(
+            "selected_action_environment_feasible" in info
+            and not bool(info["selected_action_environment_feasible"])
+        )
+        self.candidate_cpu_infeasible += int(bool(info.get("candidate_cpu_infeasible", False)))
+        self.candidate_ram_infeasible += int(bool(info.get("candidate_ram_infeasible", False)))
+        self.candidate_msd_infeasible += int(bool(info.get("candidate_msd_infeasible", False)))
         accepted = bool(info.get("accepted", False))
         latency = float(info.get("total_latency_ms", 0.0))
         threshold = float(info.get("latency_threshold_ms", 0.0))
@@ -171,6 +188,17 @@ class AblationMetrics:
             "switching_rate": self.switching_rate,
             "avg_latency_ms": self.avg_latency,
             "avg_reward": self.avg_reward,
+            "mean_candidate_actions": self.candidate_action_count / self.steps if self.steps else 0.0,
+            "mean_policy_allowed_actions": self.policy_allowed_action_count / self.steps if self.steps else 0.0,
+            "policy_pruning_rate": (
+                1.0 - self.policy_allowed_action_count / self.candidate_action_count
+                if self.candidate_action_count else 0.0
+            ),
+            "mask_empty_fallback_rate": pct(self.mask_empty_fallbacks, self.steps),
+            "selected_action_infeasible_rate": pct(self.selected_action_infeasible, self.steps),
+            "candidate_cpu_infeasible_rate": pct(self.candidate_cpu_infeasible, self.steps),
+            "candidate_ram_infeasible_rate": pct(self.candidate_ram_infeasible, self.steps),
+            "candidate_msd_infeasible_rate": pct(self.candidate_msd_infeasible, self.steps),
         }
 
 
@@ -371,6 +399,7 @@ def run_variant(
         action = action[0]
 
         obs, reward, done, _, info = env.step(action)
+        info.update(env.action_diagnostics(action, masks[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = env.reset(seed=seed)

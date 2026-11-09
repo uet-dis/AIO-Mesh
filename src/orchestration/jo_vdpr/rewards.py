@@ -24,6 +24,8 @@ class RewardCalculator:
                  knapsack_scale:     float = 0.5,
                  evacuation_penalty: float = -50.0,
                  msd_violation_penalty: float = -50.0):
+        if msd_violation_penalty > 0:
+            raise ValueError("msd_violation_penalty must be non-positive")
         
         self.BASE_REWARD        = base_reward
         self.CORE_BONUS         = core_bonus
@@ -112,7 +114,7 @@ class RewardCalculator:
         # ── [NEW] MSD Violation Penalty ──────────────────────────
         msd_penalty = 0.0
         if has_msd_violation:
-            msd_penalty = self.MSD_VIOLATION_PENALTY
+            msd_penalty = min(0.0, float(self.MSD_VIOLATION_PENALTY))
 
         reward = (baseline) + knapsack_bonus + core_b + balance + switch_c - latency_cost + violation_penalty + evac_penalty + msd_penalty
         return float(reward)

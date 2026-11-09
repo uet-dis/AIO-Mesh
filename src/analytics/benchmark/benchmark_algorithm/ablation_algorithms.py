@@ -62,6 +62,7 @@ def run_harp_full(
         obs_norm = normalized_obs(normalizer, obs)
         action, _ = model.predict(obs_norm, action_masks=masks, deterministic=True)
         obs, reward, done, _, info = raw_env.step(action[0])
+        info.update(raw_env.action_diagnostics(action[0], masks[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = raw_env.reset(seed=seed)
@@ -148,6 +149,7 @@ def run_harp_no_gat(
         obs_norm = normalized_obs(normalizer, obs) if normalizer else obs.reshape(1, -1).astype(np.float32)
         action, _ = model.predict(obs_norm, action_masks=masks, deterministic=True)
         obs, reward, done, _, info = raw_env.step(action[0])
+        info.update(raw_env.action_diagnostics(action[0], masks[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = raw_env.reset(seed=seed)
@@ -185,10 +187,11 @@ def run_harp_no_hard_masking(
 
     for _ in range(steps):
         # All-ones mask: every action is "feasible" from the policy's perspective
-        all_ones = np.ones((1, 2 * raw_env.num_nodes), dtype=bool)
+        all_ones = np.ones((1, raw_env.action_space.n), dtype=bool)
         obs_norm = normalized_obs(normalizer, obs)
         action, _ = model.predict(obs_norm, action_masks=all_ones, deterministic=True)
         obs, reward, done, _, info = raw_env.step(action[0])
+        info.update(raw_env.action_diagnostics(action[0], all_ones[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = raw_env.reset(seed=seed)
@@ -232,10 +235,11 @@ def run_harp_soft_msd_penalty(
 
     for _ in range(steps):
         # All-ones mask: no hard safety masking
-        all_ones = np.ones((1, 2 * raw_env.num_nodes), dtype=bool)
+        all_ones = np.ones((1, raw_env.action_space.n), dtype=bool)
         obs_norm = normalized_obs(normalizer, obs)
         action, _ = model.predict(obs_norm, action_masks=all_ones, deterministic=True)
         obs, reward, done, _, info = raw_env.step(action[0])
+        info.update(raw_env.action_diagnostics(action[0], all_ones[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = raw_env.reset(seed=seed)
@@ -283,6 +287,7 @@ def run_harp_no_adaptive_penalty(
         obs_norm = normalized_obs(normalizer, obs)
         action, _ = model.predict(obs_norm, action_masks=masks, deterministic=True)
         obs, reward, done, _, info = raw_env.step(action[0])
+        info.update(raw_env.action_diagnostics(action[0], masks[0]))
         metrics.collect(info, reward)
         if done:
             obs, _ = raw_env.reset(seed=seed)

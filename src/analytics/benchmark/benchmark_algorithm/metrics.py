@@ -22,6 +22,15 @@ class RunMetrics:
     queue_latencies_ms: List[float] = field(default_factory=list)
     prop_latencies_ms: List[float] = field(default_factory=list)
     srv6_latencies_ms: List[float] = field(default_factory=list)
+    candidate_action_counts: List[int] = field(default_factory=list)
+    environment_feasible_action_counts: List[int] = field(default_factory=list)
+    policy_allowed_action_counts: List[int] = field(default_factory=list)
+    policy_pruning_rates: List[float] = field(default_factory=list)
+    empty_mask_fallbacks: List[bool] = field(default_factory=list)
+    selected_action_infeasible: List[bool] = field(default_factory=list)
+    candidate_cpu_infeasible: List[bool] = field(default_factory=list)
+    candidate_ram_infeasible: List[bool] = field(default_factory=list)
+    candidate_msd_infeasible: List[bool] = field(default_factory=list)
 
     @property
     def requests(self) -> int:
@@ -59,6 +68,42 @@ class RunMetrics:
     def avg_queue_lat(self) -> float:
         return float(np.mean(self.queue_latencies_ms)) if self.queue_latencies_ms else 0.0
 
+    @property
+    def mean_candidate_actions(self) -> float:
+        return float(np.mean(self.candidate_action_counts)) if self.candidate_action_counts else 0.0
+
+    @property
+    def mean_policy_allowed_actions(self) -> float:
+        return float(np.mean(self.policy_allowed_action_counts)) if self.policy_allowed_action_counts else 0.0
+
+    @property
+    def mean_environment_feasible_actions(self) -> float:
+        return float(np.mean(self.environment_feasible_action_counts)) if self.environment_feasible_action_counts else 0.0
+
+    @property
+    def mean_policy_pruning_rate(self) -> float:
+        return float(np.mean(self.policy_pruning_rates)) if self.policy_pruning_rates else 0.0
+
+    @property
+    def empty_mask_fallback_rate(self) -> float:
+        return float(np.mean(self.empty_mask_fallbacks) * 100.0) if self.empty_mask_fallbacks else 0.0
+
+    @property
+    def selected_action_infeasible_rate(self) -> float:
+        return float(np.mean(self.selected_action_infeasible) * 100.0) if self.selected_action_infeasible else 0.0
+
+    @property
+    def candidate_cpu_infeasible_rate(self) -> float:
+        return float(np.mean(self.candidate_cpu_infeasible) * 100.0) if self.candidate_cpu_infeasible else 0.0
+
+    @property
+    def candidate_ram_infeasible_rate(self) -> float:
+        return float(np.mean(self.candidate_ram_infeasible) * 100.0) if self.candidate_ram_infeasible else 0.0
+
+    @property
+    def candidate_msd_infeasible_rate(self) -> float:
+        return float(np.mean(self.candidate_msd_infeasible) * 100.0) if self.candidate_msd_infeasible else 0.0
+
     def rolling_acceptance(self, window: int = 200) -> np.ndarray:
         if not self.acceptance:
             return np.array([])
@@ -72,6 +117,16 @@ class RunMetrics:
     def collect(self, info: dict, reward: float) -> None:
         if info.get("skipped", False):
             return
+        if "candidate_action_count" in info:
+            self.candidate_action_counts.append(int(info["candidate_action_count"]))
+            self.environment_feasible_action_counts.append(int(info["environment_feasible_action_count"]))
+            self.policy_allowed_action_counts.append(int(info["policy_allowed_action_count"]))
+            self.policy_pruning_rates.append(float(info["policy_pruning_rate"]))
+            self.empty_mask_fallbacks.append(bool(info["mask_empty_fallback"]))
+            self.selected_action_infeasible.append(not bool(info["selected_action_environment_feasible"]))
+            self.candidate_cpu_infeasible.append(bool(info.get("candidate_cpu_infeasible", False)))
+            self.candidate_ram_infeasible.append(bool(info.get("candidate_ram_infeasible", False)))
+            self.candidate_msd_infeasible.append(bool(info.get("candidate_msd_infeasible", False)))
         accepted = bool(info.get("accepted", False))
         self.acceptance.append(accepted)
         self.msd_violations.append(bool(info.get("admitted_msd_violation", False)))
@@ -101,6 +156,15 @@ class RunMetrics:
             "avg_queue_latency_ms": self.avg_queue_lat,
             "evacuation_hit_rate": self.evac_rate,
             "avg_reward": self.avg_reward,
+            "mean_candidate_actions": self.mean_candidate_actions,
+            "mean_environment_feasible_actions": self.mean_environment_feasible_actions,
+            "mean_policy_allowed_actions": self.mean_policy_allowed_actions,
+            "mean_policy_pruning_rate": self.mean_policy_pruning_rate,
+            "empty_mask_fallback_rate": self.empty_mask_fallback_rate,
+            "selected_action_infeasible_rate": self.selected_action_infeasible_rate,
+            "candidate_cpu_infeasible_rate": self.candidate_cpu_infeasible_rate,
+            "candidate_ram_infeasible_rate": self.candidate_ram_infeasible_rate,
+            "candidate_msd_infeasible_rate": self.candidate_msd_infeasible_rate,
         }
 
 
@@ -116,6 +180,15 @@ def aggregate_runs(runs: List[RunMetrics]) -> Dict[str, object]:
         ("avg_queue_latency_ms", "avg_queue_lat"),
         ("evacuation_hit_rate", "evac_rate"),
         ("avg_reward", "avg_reward"),
+        ("mean_candidate_actions", "mean_candidate_actions"),
+        ("mean_environment_feasible_actions", "mean_environment_feasible_actions"),
+        ("mean_policy_allowed_actions", "mean_policy_allowed_actions"),
+        ("mean_policy_pruning_rate", "mean_policy_pruning_rate"),
+        ("empty_mask_fallback_rate", "empty_mask_fallback_rate"),
+        ("selected_action_infeasible_rate", "selected_action_infeasible_rate"),
+        ("candidate_cpu_infeasible_rate", "candidate_cpu_infeasible_rate"),
+        ("candidate_ram_infeasible_rate", "candidate_ram_infeasible_rate"),
+        ("candidate_msd_infeasible_rate", "candidate_msd_infeasible_rate"),
     ]
     out: Dict[str, object] = {
         "algorithm": runs[0].algorithm,
@@ -129,4 +202,3 @@ def aggregate_runs(runs: List[RunMetrics]) -> Dict[str, object]:
         out[f"{label}_mean"] = mean(vals)
         out[f"{label}_std"] = pstdev(vals) if len(vals) > 1 else 0.0
     return out
-
