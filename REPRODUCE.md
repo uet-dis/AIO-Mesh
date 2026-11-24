@@ -15,6 +15,8 @@ The [run index](docs/AIO-mesh-rev1/evidence/run_index) inventories current corre
 | Background-chain table and pair oracle | `scripts/rev1/summarize_model_refresh_evidence.py` | Twelve background-chain per-seed CSVs and three 10-seed pair-oracle JSON files are retained. Refreshed outputs are under `docs/AIO-mesh-rev1/evidence/model_refresh_20261120/`. |
 | Dedicated timing subsection | `results/rev1/nonhil_studies/20261117_233441/controlled_policy_cost.json` | Historical serialized HARP/SAF-H timing, retained with its run manifest. It was not rerun with corrected checkpoints and is not attributed to refreshed N² models. |
 | SAF-H 25/50/100-node timing | `scripts/rev1/summarize_archived_grid_timing.py` | The cited 10-seed archive is now included under `results/rev1/nonhil_studies/20261117_235132/`; the script exports `grid_timing_per_seed.csv` and SHA-256 manifest. The feasible-set P95 tail appears in all ten 100-node seeds; the saved percentiles do not identify its finer cause. |
+| Matched HARP/SAF-H size timing | `scripts/rev1/run_nonhil_studies.py --study scale` | Reruns both methods serially on the same Bursty seed traces for synthetic 25/50/100-node topologies; one warm-up per method/topology, alternating method order, 300 decisions per seed, and one PyTorch intra-op thread. Checkpoint, normalizer, and data SHA-256 values are recorded in the output manifest. |
+| Telemetry freshness fault injection | `scripts/rev1/run_stale_telemetry_fault_injection.py` | Deterministically exercises stale TTL, changed local state after snapshot, a reported change between reservation and actuation, and an unreported external change. The last case documents the local manager's observability limit; it is not a hardware experiment. |
 | TTL/mask ordering intervention | `scripts/rev1/summarize_mask_expiry_intervention.py` | Validates 60 paired CSVs under `results/evidence/mentor_completion_20261121/mask_expiry_intervention/` against refreshed benchmark per-seed rows and writes a summary/hashed manifest. Post-expiry mask uses pre-expiry observation; no runtime change is inferred. |
 | Arrival-rate-only sweep and paired statistics | `scripts/rev1/run_arrival_rate_sweep.py`, `scripts/rev1/summarize_arrival_rate_sweep.py` | Completed 1,500 policy-condition-seed rows using corrected N² checkpoint/normalizer pairs; 20 seeds × 5 arrival probabilities × 3 real topologies × 5 protected policies, with fixed Bursty demand and TTL. Raw data and protocol manifest are under `results/evidence/mentor_completion_20261121/arrival_rate_only/`; the figure, 15 paired HARP--SAF-H contrasts, bootstrap intervals, exact signed-rank tests, Holm correction, and output hashes are in `docs/AIO-mesh-rev1/figs/arrival_rate_only.pdf`, `generated/arrival_rate_paired_rows.tex`, and `evidence/mentor_completion_20261121/`. This evaluation is conditional on fixed checkpoints.
 | Figures 1–2 | `scripts/paper/make_architecture_figures.py` | Architecture illustrations. |
@@ -32,6 +34,16 @@ The available endpoint captures are indexed under `evidence/run_index/forwarding
 ## Single-cell reruns
 
 See [the November 19 rerun report](docs/AIO-mesh-rev1/evidence/rerun_report.md). The runner defaults to the local `venv/bin/python`. Set `AIOMESH_PYTHON` to the interpreter from the archived experiment when its dependencies differ. A rerun emits fresh results and does not replace the archived records.
+
+To run the new paired size timing study with the 10 manuscript seeds:
+
+```bash
+MPLCONFIGDIR=/tmp/harp-mpl OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+  python3 scripts/rev1/run_nonhil_studies.py --study scale --steps 300 --scale-steps 300 \
+  --seeds 42 100 2024 8888 9999 7 17 73 314 2718
+```
+
+The result is written to a timestamped directory under `results/rev1/nonhil_studies/`. The telemetry fault-injection result is written to `results/rev1/stale_telemetry_fault_injection/results.json`.
 
 ## Overleaf
 

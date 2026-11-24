@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Dict, List
 
 import numpy as np
+import networkx as nx
 
 from .env_factory import make_env
 from .metrics import RunMetrics
@@ -193,6 +194,97 @@ def run_cspf(make_env_fn: EnvMaker, scenario: str, steps: int, seed: int,
         )
         if done:
             state, _ = env.reset(seed=seed)
+    metrics.stop_clock()
+    env.close()
+    return metrics
+
+
+def run_sfcplanner_ksp_adaptation(make_env_fn: EnvMaker, scenario: str, steps: int,
+                                  seed: int, protected: bool = True,
+                                  k_paths: int = 5) -> RunMetrics:
+    """K-shortest-path planning proxy for the simulator's placement/route pairs.
+
+    This is an adaptation inspired by SRv6-aware SFC planning, not a reproduction
+    of Qiu et al.'s DRL-based SFCPlanner. The environment has no ingress/egress
+    or ordered-chain action, so candidate paths only rank endpoint pairs; the
+    environment still admits and scores the selected pair using its own model.
+    """
+    if k_paths < 1:
+        raise ValueError("k_paths must be positive")
+    env = make_env_fn()
+    env.enforce_resource_constraints = protected
+    env.traffic_scenario = scenario
+    np.random.seed(seed)
+    random.seed(seed)
+    metrics = RunMetrics(
+        f"sfcplanner_ksp_adaptation_k{k_paths}_{'protected' if protected else 'unprotected'}",
+        scenario, env.topo.topology_name, seed,
+    )
+    obs, _ = env.reset(seed=seed)
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(env.num_nodes))
+    for u in range(env.num_nodes):
+        for v in range(u + 1, env.num_nodes):
+            if env.topo.adj_matrix[u][v] > 0:
+                graph.add_edge(u, v, weight=float(env.latency_matrix[u][v]))
+
+    # Cache the static K-shortest simple paths for every endpoint pair once.
+    paths: dict[tuple[int, int], list[tuple[list[int], float]]] = {}
+    for source in range(env.num_nodes):
+        for target in range(env.num_nodes):
+            if source == target:
+                paths[(source, target)] = [([source], 0.0)]
+                continue
+            try:
+                found = []
+                for path in nx.shortest_simple_paths(graph, source, target, weight="weight"):
+                    latency = sum(float(env.latency_matrix[a][b]) for a, b in zip(path, path[1:]))
+                    found.append((path, latency))
+                    if len(found) >= k_paths:
+                        break
+                paths[(source, target)] = found
+            except (nx.NetworkXNoPath, nx.NodeNotFound):
+                paths[(source, target)] = []
+
+    metrics.start_clock()
+    for _ in range(steps):
+        decision_start = time.perf_counter()
+        req = env._current_req
+        cpu_req = float(req.get("cpu", 0.0))
+        ram_req = float(req.get("ram", 0.0))
+        msd_req = int(req.get("msd", 1))
+        bw_req = cpu_req * 10.0
+        best = None
+        candidate_start = time.perf_counter()
+        for place in range(env.num_nodes):
+            cpu = float(env._state[place * 3])
+            ram = float(env._state[place * 3 + 1])
+            if protected and (cpu + cpu_req > env.max_cpu or ram + ram_req > env.max_ram):
+                continue
+            for route in range(env.num_nodes):
+                if place != route and protected and env._link_bw[place][route] < bw_req:
+                    continue
+                for path, path_latency in paths[(place, route)]:
+                    if protected and any(msd_req > env.node_msd_limits[node] for node in path):
+                        continue
+                    hops = len(path) - 1
+                    cost = (0.5 * path_latency +
+                            100.0 * ((cpu + cpu_req) / env.max_cpu) + 5.0 * hops)
+                    candidate = (cost, place, route)
+                    if best is None or candidate < best:
+                        best = candidate
+        candidate_ms = (time.perf_counter() - candidate_start) * 1000.0
+        place, route = (best[1], best[2]) if best is not None else (0, 0)
+        obs, reward, done, _, info = env.step([place, route])
+        info["decision_latency_ms"] = (
+            (time.perf_counter() - decision_start) * 1000.0 +
+            float(info.get("state_construction_ms", 0.0))
+        )
+        info["decision_components_ms"] = {"ksp_candidate_selection_ms": candidate_ms}
+        metrics.collect(info, reward)
+        if done:
+            obs, _ = env.reset(seed=seed)
     metrics.stop_clock()
     env.close()
     return metrics

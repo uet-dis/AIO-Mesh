@@ -1,0 +1,64 @@
+{
+  "created_utc": "2026-11-22T15:33:46.022406+00:00",
+  "git_revision": "c1b26576f1405f7a0a5e0355fd1007616e4821c3",
+  "python": "3.14.8",
+  "platform": "Linux-7.2.5-100.fc43.x86_64-x86_64-with-glibc2.42",
+  "data_path": "data/real_telecom_combined.csv",
+  "data_sha256": "5370da1bb55cd679422150c5c4073175109cc7b831eff9c74491b30a17dcdd2a",
+  "seeds": [
+    42,
+    100,
+    2024,
+    8888,
+    9999,
+    7,
+    17,
+    73,
+    314,
+    2718
+  ],
+  "steps": 300,
+  "model_path": "results/models/v11/dgrl_v11_final_vietnam.zip",
+  "model_sha256": null,
+  "normalizer_path": "results/models/v11/vec_normalize_v11_vietnam.pkl",
+  "normalizer_sha256": null,
+  "cpu_count": 16,
+  "cpu_model": "12th Gen Intel(R) Core(TM) i5-12500H",
+  "memory_bytes": 16431566848,
+  "numpy_version": "2.3.5",
+  "torch_version": "2.11.0+cu130",
+  "torch_threads": 1,
+  "torch_thread_policy": "single intra-op thread for serialized simulator timing",
+  "scale_model_artifacts": {
+    "synthetic_25": {
+      "model": "results/models/v11_synthetic_25/dgrl_v11_final_synthetic_25.zip",
+      "model_sha256": "8b86d55db7238e082eb303492066522e0a5d50772489f96a2062b69b2e13c5ad",
+      "normalizer": "results/models/v11_synthetic_25/vec_normalize_v11_synthetic_25.pkl",
+      "normalizer_sha256": "721519f095dded370722c2d54c133f2affc3e8df2894f0d4dbdfef2dd959c7b9"
+    },
+    "synthetic_50": {
+      "model": "results/models/v11_synthetic_50/dgrl_v11_final_synthetic_50.zip",
+      "model_sha256": "6fdd0763326080afefd1697882f45a0a1587f01d42da53f8b64c5702297a6858",
+      "normalizer": "results/models/v11_synthetic_50/vec_normalize_v11_synthetic_50.pkl",
+      "normalizer_sha256": "0407807ca25f17039bc56602bdded4a50709d00dee2ab3ac2974d1fe48e3c6e4"
+    },
+    "synthetic_100": {
+      "model": "results/models/v11_synthetic_100/dgrl_v11_final_synthetic_100.zip",
+      "model_sha256": "0158e642be515fade0f6ccda899ec9b19ae2c060a596eea77ac2a0c42aab9069",
+      "normalizer": "results/models/v11_synthetic_100/vec_normalize_v11_synthetic_100.pkl",
+      "normalizer_sha256": "d6ebe065a338fcc722f41d3f844ce7f3fafa7a25897f66c6e3ef63465701dd0a"
+    }
+  },
+  "cuda_available": false,
+  "benchmark_workers": 1,
+  "scale_steps_per_seed": 300,
+  "study_source_sha256": {
+    "scripts/rev1/run_nonhil_studies.py": "e8a91ddc98b971139e33be850e82a0971ae91339ef86f27894fee93ad8006a3c",
+    "src/analytics/benchmark/benchmark_algorithm/algorithms.py": "3549c20f6e27dee65ba9755437cfb979dae662608c55fba5b421e07ae7a28abd",
+    "src/analytics/benchmark/benchmark_algorithm/metrics.py": "19f7ba3c15d704d8605e59d4acc229b59504c8a3d609dac5d7158bf4eb979b10",
+    "src/analytics/benchmark/benchmark_algorithm/env_factory.py": "9f14d5d5458de9ac99285a44e1ae696d2930025fea5b200c9fade513b59db226",
+    "src/orchestration/jo_vdpr/env.py": "bc06f22067c22b6a80e8985e0cbc3b5490ac309e0b07bc7573e8393e607b4d48",
+    "src/orchestration/jo_vdpr/topology.py": "2b91b72673be8dfb66dc929edc58d80e5f44148ff495a4d0c576077d17ca19f7"
+  },
+  "git_worktree_dirty": true
+}

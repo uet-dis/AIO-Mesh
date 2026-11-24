@@ -349,12 +349,24 @@ class NetworkStateManager:
             expected_state_version=expected_state_version,
         )
 
-    def mark_actuation_requested(self, vnf_name: str) -> None:
+    def mark_actuation_requested(
+        self, vnf_name: str, expected_state_version: Optional[int] = None,
+    ) -> Tuple[bool, Optional[str]]:
         with self._lock:
             if vnf_name not in self._active_vnfs:
                 raise ValueError("unknown reservation")
+            if self._persistence_failed:
+                return False, "reservation_persistence_unavailable"
+            if expected_state_version is not None and expected_state_version != self._state_version:
+                return False, "stale_state_version"
+            if self.max_telemetry_age_s is not None:
+                now = time.monotonic()
+                if any(timestamp is None or now - timestamp > self.max_telemetry_age_s
+                       for timestamp in self._resource_telemetry_at):
+                    return False, "stale_telemetry"
             self._active_vnfs[vnf_name]["actuation_requested"] = True
             self._checkpoint()
+            return True, None
 
     def release_unactuated_reservation(self, vnf_name: str) -> Tuple[bool, Optional[str]]:
         """TTL may release a selection-only record, never an actuation in flight."""

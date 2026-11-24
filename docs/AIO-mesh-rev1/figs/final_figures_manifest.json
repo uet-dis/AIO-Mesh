@@ -2,12 +2,12 @@
   "command": "python scripts/paper/refresh_final_figures.py",
   "scope": "Five main and three supplementary figures; distinct experiment protocols are preserved. Final 2M training variation is reported in Supplementary Table S22.",
   "generators_sha256": {
-    "scripts/paper/refresh_final_figures.py": "99308eef2548c7324006bcf75ce18eb4da181ce15ae6b0dc7fdbffb18c7f84c0",
+    "scripts/paper/refresh_final_figures.py": "c1faf8a39a3c18e38d39da9cc8cb1aa34cd0b93d28d5cdd5aa161e1eee218ee9",
     "scripts/paper/make_architecture_figures.py": "319be2b6a10a58f68919a2d6fb07c474e6d7792e3af78401ffec69545589f138",
     "scripts/rev1/plot_manuscript_benchmark.py": "289172a3d62aae0d8172757c865b3f1df6b71318bcb56eb5b8382bc9d7e41642",
     "scripts/paper/make_load_sweep_figure.py": "bc72b603bfa51611836e376648ec8868b6179e0ca447b8887561987ef02ca5e7",
     "scripts/rev1/plot_manuscript_ablation.py": "d77a1458929d491006f85e320888ff3d46a165e5959a732833821c2139f0fb90",
-    "scripts/rev1/plot_nonhil_studies.py": "30c2ca531f0ec7662f989700db2b562cd5ebf26ce18eab58d3c585cdc8c091c3"
+    "scripts/rev1/plot_nonhil_studies.py": "c6cea99c8cb02f0d229ff34d9cc0b2c5167005dd6c91e562ca9eff28baee0d33"
   },
   "figures": {
     "overview.pdf": {
@@ -43,10 +43,10 @@
       }
     },
     "policy_cost_scalability.pdf": {
-      "sha256": "89b75017dcc138b1f14de93f6110760302e8b7ff3cdafbe414ad53f8afa89d3d",
+      "sha256": "e19a9a74608d9b6a69a1007c6b5e0e6a68185b3ce6ec1ef4318fe7c9a33d1211",
       "inputs_sha256": {
         "results/rev1/nonhil_studies/20261117_233441/controlled_policy_cost.json": "e2eebcdbdc6daccb2d458034d2dc82b352bff7917f332094763d269b62a36e11",
-        "results/rev1/nonhil_studies/20261117_235132/topology_scalability.json": "461ee1dce04766d701e7cb51c6afd0f90647991b3cedac0e166d721bd6061bae"
+        "results/rev1/nonhil_studies/20261122_223346/topology_scalability.json": "11a9a934905433a4751d81aed4ef84d58ec57b0c0922947ac05598186a913359"
       }
     },
     "ablation_mask_admission.pdf": {

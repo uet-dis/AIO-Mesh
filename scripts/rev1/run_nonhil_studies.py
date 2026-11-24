@@ -188,6 +188,7 @@ def run_cost(topology: str, seeds: tuple[int, ...], steps: int, data: Path,
 
 
 def run_scale(topologies: tuple[str, ...], seeds: tuple[int, ...], steps: int, data: Path) -> dict:
+    """Matched, size-specific HARP/SAF-H policy timing on identical traces."""
     rows = []
     edge_counts = {}
     for topology in topologies:
@@ -195,28 +196,72 @@ def run_scale(topologies: tuple[str, ...], seeds: tuple[int, ...], steps: int, d
         probe = factory()
         edge_counts[topology] = int(np.triu(probe.topo.adj_matrix, k=1).sum())
         probe.close()
-        for seed in seeds:
-            run = run_saf_h(factory, "bursty", steps, seed, protected=True)
-            rows.append(run.as_summary())
-            print(f"scale {topology} nodes={int(topology.split('_')[1])} seed={seed} "
-                  f"feasible-set p95={run.as_summary().get('feasible_set_ms_p95_ms', 0.0):.4f}ms", flush=True)
+        nodes = int(topology.split("_")[1])
+        model_path = ROOT / f"results/models/v11_synthetic_{nodes}/dgrl_v11_final_synthetic_{nodes}.zip"
+        norm_path = ROOT / f"results/models/v11_synthetic_{nodes}/vec_normalize_v11_synthetic_{nodes}.pkl"
+        for path in (model_path, norm_path):
+            if not path.is_file():
+                raise FileNotFoundError(f"size-matched HARP artifact not found: {path}")
+        # Exclude one warm-up for each policy and size; alternate execution order
+        # to reduce systematic thermal/cache ordering effects.
+        run_saf_h(factory, "bursty", steps, 2718, protected=True)
+        run_jo_vppm(factory, model_path, norm_path, "bursty", steps, 2718, protected=True)
+        for index, seed in enumerate(seeds):
+            order = ("harp", "saf_h") if index % 2 == 0 else ("saf_h", "harp")
+            measured = {}
+            for method in order:
+                if method == "harp":
+                    run = run_jo_vppm(factory, model_path, norm_path, "bursty", steps, seed, protected=True)
+                else:
+                    run = run_saf_h(factory, "bursty", steps, seed, protected=True)
+                measured[method] = run.as_summary()
+            if measured["harp"]["trace_sha256"] != measured["saf_h"]["trace_sha256"]:
+                raise RuntimeError(f"HARP/SAF-H offered traces differ: {topology} seed={seed}")
+            rows.append({"topology": topology, "seed": seed, "execution_order": list(order), **measured})
+            print(f"scale {topology} nodes={nodes} seed={seed} "
+                  f"HARP mask/inference/decision p95="
+                  f"{measured['harp'].get('mask_construction_ms_p95_ms', 0.0):.4f}/"
+                  f"{measured['harp'].get('policy_inference_ms_p95_ms', 0.0):.4f}/"
+                  f"{measured['harp'].get('decision_latency_p95_ms', 0.0):.4f}ms; "
+                  f"SAF-H enumeration/selection/decision p95="
+                  f"{measured['saf_h'].get('feasible_set_ms_p95_ms', 0.0):.4f}/"
+                  f"{measured['saf_h'].get('heuristic_selection_ms_p95_ms', 0.0):.4f}/"
+                  f"{measured['saf_h'].get('decision_latency_p95_ms', 0.0):.4f}ms", flush=True)
     aggregate = []
     for topology in topologies:
         group = [r for r in rows if r["topology"] == topology]
         nodes = int(topology.split("_")[1])
-        aggregate.append({
+        entry = {
             "topology": topology, "nodes": nodes, "actions": nodes * nodes,
-            "undirected_links": edge_counts[topology],
-            "seeds": len(group), "requests_mean": statistics.mean(r["requests"] for r in group),
-            "feasible_set_p50_ms_mean": statistics.mean(r.get("feasible_set_ms_p50_ms", 0.0) for r in group),
-            "feasible_set_p95_ms_mean": statistics.mean(r.get("feasible_set_ms_p95_ms", 0.0) for r in group),
-            "selection_p95_ms_mean": statistics.mean(r.get("heuristic_selection_ms_p95_ms", 0.0) for r in group),
-            "decision_p95_ms_mean": statistics.mean(r.get("decision_latency_p95_ms", 0.0) for r in group),
-            "wall_time_s_mean": statistics.mean(r.get("run_wall_time_s", 0.0) for r in group),
+            "undirected_links": edge_counts[topology], "seeds": len(group),
+        }
+        for policy in ("harp", "saf_h"):
+            pr = [row[policy] for row in group]
+            entry[policy] = {
+                "requests_mean": statistics.mean(r["requests"] for r in pr),
+                "decision_p50_ms_mean": statistics.mean(r.get("decision_latency_p50_ms", 0.0) for r in pr),
+                "decision_p95_ms_mean": statistics.mean(r.get("decision_latency_p95_ms", 0.0) for r in pr),
+                "decision_p99_ms_mean": statistics.mean(r.get("decision_latency_p99_ms", 0.0) for r in pr),
+                "wall_time_s_mean": statistics.mean(r.get("run_wall_time_s", 0.0) for r in pr),
+            }
+        entry["harp"].update({
+            "mask_p50_ms_mean": statistics.mean(r.get("mask_construction_ms_p50_ms", 0.0) for r in [x["harp"] for x in group]),
+            "mask_p95_ms_mean": statistics.mean(r.get("mask_construction_ms_p95_ms", 0.0) for r in [x["harp"] for x in group]),
+            "inference_p50_ms_mean": statistics.mean(r.get("policy_inference_ms_p50_ms", 0.0) for r in [x["harp"] for x in group]),
+            "inference_p95_ms_mean": statistics.mean(r.get("policy_inference_ms_p95_ms", 0.0) for r in [x["harp"] for x in group]),
+            "normalization_p95_ms_mean": statistics.mean(r.get("normalization_ms_p95_ms", 0.0) for r in [x["harp"] for x in group]),
         })
-    return {"policy": "SAF-H", "scenario": "bursty", "steps_per_seed": steps,
-            "seeds": list(seeds), "measurements": aggregate, "per_seed": rows,
-            "scope": "feasibility enumeration and heuristic selection; no HARP checkpoints for these sizes"}
+        entry["saf_h"].update({
+            "feasible_set_p50_ms_mean": statistics.mean(r.get("feasible_set_ms_p50_ms", 0.0) for r in [x["saf_h"] for x in group]),
+            "feasible_set_p95_ms_mean": statistics.mean(r.get("feasible_set_ms_p95_ms", 0.0) for r in [x["saf_h"] for x in group]),
+            "selection_p95_ms_mean": statistics.mean(r.get("heuristic_selection_ms_p95_ms", 0.0) for r in [x["saf_h"] for x in group]),
+        })
+        aggregate.append(entry)
+    return {"policies": ["HARP", "SAF-H"], "scenario": "bursty", "steps_per_seed": steps,
+            "seeds": list(seeds), "measurement_order": "serialized in one process, alternating policy order by seed",
+            "warmup_runs_excluded_per_policy_and_topology": 1,
+            "measurements": aggregate, "per_seed": rows,
+            "scope": "synthetic topology simulator decisions; HARP component timing and SAF-H candidate enumeration/selection timing"}
 
 
 def write_result(outdir: Path, name: str, payload: dict, manifest: dict) -> None:
@@ -239,6 +284,9 @@ def main() -> None:
     parser.add_argument("--model", type=Path, default=ROOT / "results/models/v11/dgrl_v11_final_vietnam.zip")
     parser.add_argument("--normalizer", type=Path, default=ROOT / "results/models/v11/vec_normalize_v11_vietnam.pkl")
     args = parser.parse_args()
+    # The MLP/GAT inference workload is small; multiple BLAS worker threads can
+    # oversubscribe the process and produce avoidable latency variance.
+    torch.set_num_threads(1)
     seeds = tuple(args.seeds)
     if not args.data.is_file():
         raise FileNotFoundError(f"dataset not found: {args.data}")
@@ -249,6 +297,19 @@ def main() -> None:
     manifest = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "git_revision": __import__("subprocess").check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "git_worktree_dirty": bool(__import__("subprocess").check_output(
+            ["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
+        "study_source_sha256": {
+            str(path.relative_to(ROOT)): sha256_file(path)
+            for path in (
+                Path(__file__).resolve(),
+                ROOT / "src/analytics/benchmark/benchmark_algorithm/algorithms.py",
+                ROOT / "src/analytics/benchmark/benchmark_algorithm/metrics.py",
+                ROOT / "src/analytics/benchmark/benchmark_algorithm/env_factory.py",
+                ROOT / "src/orchestration/jo_vdpr/env.py",
+                ROOT / "src/orchestration/jo_vdpr/topology.py",
+            )
+        },
         "python": platform.python_version(), "platform": platform.platform(),
         "data_path": str(args.data.relative_to(ROOT) if args.data.is_relative_to(ROOT) else args.data),
         "data_sha256": sha256_file(args.data), "seeds": list(seeds), "steps": args.steps,
@@ -265,6 +326,17 @@ def main() -> None:
         "numpy_version": np.__version__,
         "torch_version": torch.__version__,
         "torch_threads": torch.get_num_threads(),
+        "torch_thread_policy": "single intra-op thread for serialized simulator timing",
+        "scale_model_artifacts": {
+            topology: {
+                "model": str((ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/dgrl_v11_final_synthetic_{int(topology.split('_')[1])}.zip").relative_to(ROOT)),
+                "model_sha256": sha256_file(ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/dgrl_v11_final_synthetic_{int(topology.split('_')[1])}.zip")
+                    if (ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/dgrl_v11_final_synthetic_{int(topology.split('_')[1])}.zip").is_file() else None,
+                "normalizer": str((ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/vec_normalize_v11_synthetic_{int(topology.split('_')[1])}.pkl").relative_to(ROOT)),
+                "normalizer_sha256": sha256_file(ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/vec_normalize_v11_synthetic_{int(topology.split('_')[1])}.pkl")
+                    if (ROOT / f"results/models/v11_synthetic_{int(topology.split('_')[1])}/vec_normalize_v11_synthetic_{int(topology.split('_')[1])}.pkl").is_file() else None,
+            } for topology in SCALABILITY_TOPOLOGIES
+        },
         "cuda_available": bool(torch.cuda.is_available()),
         "benchmark_workers": 1,
     }

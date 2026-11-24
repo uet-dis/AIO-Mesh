@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the serialized policy-cost and SAF-H topology-size study."""
+"""Plot serialized policy cost and matched HARP/SAF-H topology-size timing."""
 from __future__ import annotations
 
 import argparse
@@ -39,14 +39,19 @@ def main() -> None:
     ax = axes[1]
     scale_rows = scale["measurements"]
     positions = [row["nodes"] for row in scale_rows]
-    medians = [row["feasible_set_p50_ms_mean"] for row in scale_rows]
-    tails = [row["feasible_set_p95_ms_mean"] for row in scale_rows]
-    ax.plot(positions, medians, "o-", color="#176B87", linewidth=1.7, markersize=5, label="Feasible-set p50")
-    ax.plot(positions, tails, "s--", color="#B34A36", linewidth=1.7, markersize=5, label="Feasible-set p95")
-    ax.plot(positions, [row["decision_p95_ms_mean"] for row in scale_rows], "^-.", color="#3F7653", label="Decision P95")
+    ax.plot(positions, [row["harp"]["mask_p95_ms_mean"] for row in scale_rows],
+            "o-", color="#176B87", linewidth=1.7, markersize=5, label="HARP mask P95")
+    ax.plot(positions, [row["harp"]["inference_p95_ms_mean"] for row in scale_rows],
+            "s--", color="#B34A36", linewidth=1.7, markersize=5, label="HARP inference P95")
+    ax.plot(positions, [row["harp"]["decision_p95_ms_mean"] for row in scale_rows],
+            "^-.", color="#3F7653", label="HARP decision P95")
+    ax.plot(positions, [row["saf_h"]["feasible_set_p95_ms_mean"] for row in scale_rows],
+            "D:", color="#8A6D31", label="SAF-H candidate P95")
+    ax.plot(positions, [row["saf_h"]["decision_p95_ms_mean"] for row in scale_rows],
+            "v-", color="#775A9E", label="SAF-H decision P95")
     ax.set_xticks(positions)
     ax.set_xlabel("Grid size (nodes)")
-    ax.set_title("SAF-H on synthetic grids")
+    ax.set_title("Matched policies on synthetic grids")
     ax.set_yscale("log")
     ax.grid(True, which="both", axis="y", alpha=.25)
     ax.legend(frameon=False, fontsize=8)

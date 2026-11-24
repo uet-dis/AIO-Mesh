@@ -109,6 +109,7 @@ class TestOrchestrationAPI(unittest.TestCase):
         )
         def reserve_then_return(manager, request, drl, *, vnf_name, **_):
             assert manager.try_reserve(6, 7, 10, 5, 2, vnf_name=vnf_name)[0]
+            decision.admission_state_version = manager.snapshot().state_version
             return decision
 
         service = Mock(make_before_break_sequence=AsyncMock(return_value={"status": "success"}))
@@ -121,6 +122,44 @@ class TestOrchestrationAPI(unittest.TestCase):
         result = response.json()["data"]["migration_result"]
         self.assertEqual(result["status"], "creating_and_steering")
         self.assertNotIn("old_vnf", result)
+
+    def test_reported_update_after_reservation_is_rejected_before_actuation(self):
+        import asyncio
+        from fastapi import BackgroundTasks, HTTPException
+        from src.portal.backend.app.models.schemas import SFCRequest
+        from src.portal.backend.app.services.realization import AdmittedRealization
+
+        decision = SimpleNamespace(
+            choice=SimpleNamespace(v_place=0, v_route=1),
+            branch="drl", method="Hybrid:DRL", sid_stack=["2001:db8::1"],
+            realization=AdmittedRealization(
+                request_id="request-fault", operation_id="operation-fault",
+                topology_hash=self.manager._topology_identity(), profile_id="pair-admission-v1",
+                sid_stack=("2001:db8::1",), forwarding_sid="2001:db8::1"),
+            decision_state_version=0, admission_state_version=0, timings_ms={},
+        )
+
+        def reserve_then_inject(manager, request, drl, *, vnf_name, **_):
+            snapshot = manager.snapshot()
+            accepted, reason = manager.try_reserve(
+                0, 1, 10, 5, 1, vnf_name=vnf_name,
+                expected_state_version=snapshot.state_version,
+            )
+            assert accepted, reason
+            decision.admission_state_version = manager.snapshot().state_version
+            manager.update_node_telemetry(0, cpu_util=95, ram_util=0, msd_used=0)
+            return decision
+
+        with patch.object(self.router_module, "select_and_reserve", side_effect=reserve_then_inject), \
+             patch.object(self.router_module, "get_forecast_service"):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(self.router_module.orchestrate_sfc(
+                    SFCRequest(alert_flag=True), BackgroundTasks(),
+                ))
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.detail["code"], "STALE_STATE_BEFORE_ACTUATION")
+        self.assertTrue(raised.exception.detail["reservation_released"])
+        self.assertEqual(self.manager._active_vnfs, {})
 
     def _deployed_then_vanished(self, name):
         self.assertTrue(self.manager.try_reserve(4, 4, 10, 5, 2, vnf_name=name)[0])
@@ -205,3 +244,64 @@ class TestOrchestrationAPI(unittest.TestCase):
         response = self.client.post('/api/orchestrate/reset')
         self.assertEqual(response.status_code, 409)
         self.assertIn('replacement', self.manager._active_vnfs)
+
+
+class TestTelemetryFreshnessAndDecisionRace(unittest.TestCase):
+    """Fault injection for freshness and snapshot-to-reservation races."""
+
+    def _fresh_manager(self):
+        manager = NetworkStateManager(topology_name="vietnam", max_telemetry_age_s=60.0)
+        for node in range(manager.num_nodes):
+            manager.update_node_telemetry(node, cpu_util=0, ram_util=0, msd_used=0)
+        return manager
+
+    def test_expired_snapshot_is_rejected(self):
+        import time
+        manager = self._fresh_manager()
+        snapshot = manager.snapshot()
+        old = time.monotonic() - manager.max_telemetry_age_s - 1
+        with manager._lock:
+            manager._resource_telemetry_at = [old] * manager.num_nodes
+            manager._resource_field_at = [[old, old, old] for _ in range(manager.num_nodes)]
+        self.assertEqual(len(manager.snapshot().stale_telemetry_nodes), manager.num_nodes)
+        self.assertEqual(
+            manager.try_reserve(0, 1, 10, 5, 1, expected_state_version=snapshot.state_version),
+            (False, "stale_telemetry"),
+        )
+
+    def test_resource_update_after_snapshot_rejects_stale_version(self):
+        manager = self._fresh_manager()
+        snapshot = manager.snapshot()
+        manager.update_node_telemetry(0, cpu_util=99, ram_util=0, msd_used=0)
+        self.assertEqual(
+            manager.try_reserve(0, 1, 10, 5, 1, expected_state_version=snapshot.state_version),
+            (False, "stale_state_version"),
+        )
+
+    def test_resource_update_after_reservation_blocks_actuation(self):
+        manager = self._fresh_manager()
+        snapshot = manager.snapshot()
+        self.assertEqual(
+            manager.try_reserve(0, 1, 10, 5, 1, vnf_name="fault-injected",
+                                expected_state_version=snapshot.state_version),
+            (True, None),
+        )
+        admission_version = snapshot.state_version + 1
+        manager.update_node_telemetry(0, cpu_util=95, ram_util=0, msd_used=0)
+        self.assertEqual(
+            manager.mark_actuation_requested("fault-injected", expected_state_version=admission_version),
+            (False, "stale_state_version"),
+        )
+        self.assertFalse(manager._active_vnfs["fault-injected"].get("actuation_requested", False))
+        self.assertEqual(manager.release_unactuated_reservation("fault-injected"), (True, None))
+        self.assertNotIn("fault-injected", manager._active_vnfs)
+
+    def test_unreported_external_change_is_not_detectable(self):
+        manager = self._fresh_manager()
+        snapshot = manager.snapshot()
+        # A hardware change that never reaches the controller's telemetry API
+        # cannot change the state available to this local admission manager.
+        self.assertEqual(
+            manager.try_reserve(0, 1, 10, 5, 1, expected_state_version=snapshot.state_version),
+            (True, None),
+        )

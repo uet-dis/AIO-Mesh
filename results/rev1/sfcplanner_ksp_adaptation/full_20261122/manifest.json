@@ -1,0 +1,76 @@
+{
+  "created_utc": "2026-11-22T17:21:27.330744+00:00",
+  "protocol": "matched offered-trace; protected common simulator admission",
+  "baseline_name": "SFCPlanner-inspired K-shortest-path adaptation",
+  "baseline_scope": "Not a reproduction of Qiu et al. (2024). Simulator action is an endpoint pair; K shortest paths rank candidate pairs and filter requested depth against path-node MSD. The simulator executes/admit-checks the selected endpoint pair, not the candidate path.",
+  "topologies": [
+    "vietnam",
+    "nsfnet",
+    "geant2"
+  ],
+  "scenarios": [
+    "elephant_stress",
+    "burst_surge",
+    "chaos"
+  ],
+  "environment_scenarios": {
+    "elephant_stress": "heavy_tail",
+    "burst_surge": "bursty",
+    "chaos": "chaos"
+  },
+  "seeds": [
+    42,
+    100,
+    2024,
+    8888,
+    9999,
+    7,
+    17,
+    73,
+    314,
+    2718,
+    11,
+    23,
+    47,
+    89,
+    101,
+    211,
+    512,
+    1024,
+    4096,
+    8192
+  ],
+  "steps": 3000,
+  "k_paths": 5,
+  "data_path": "/home/hung8uandj/Data/Study/AIO-mesh/data/real_telecom_combined.csv",
+  "data_sha256": "5370da1bb55cd679422150c5c4073175109cc7b831eff9c74491b30a17dcdd2a",
+  "trace_checks_equal": 180,
+  "protected_hard_constraints": [
+    "CPU",
+    "RAM",
+    "pair bandwidth",
+    "MSD"
+  ],
+  "policy_order": "alternated by seed; each policy uses a fresh environment",
+  "harp_model": "/home/hung8uandj/Data/Study/AIO-mesh/results/models/retrain_v11_20261119_corrected",
+  "harp_artifacts": {
+    "vietnam": {
+      "model_sha256": "ea215985d1ad5d8ccc8e900da82d3e50e5ff51417c05bb96930dfc10ab9e86da",
+      "normalizer_sha256": "87385923e8099d3b56096eeaa9a43f75a4e0a670c972a77e667d7e160229d646"
+    },
+    "nsfnet": {
+      "model_sha256": "84422beca614c96b110aee4d6ea44eda04e66c41e4a29af912b8b4d8d569c52c",
+      "normalizer_sha256": "6bf4eccb4578f29201217ff7be59b73d79815adb63c67e6ebb12a8ccb5413596"
+    },
+    "geant2": {
+      "model_sha256": "ae5a9eb304d4c393327a825b7e467088dcc08227d7bb6be2c5059c78d56d3748",
+      "normalizer_sha256": "f86466cb046f0f629a3b7822aa6990d105f10141ac7b99f7887c4be200806571"
+    }
+  },
+  "source_sha256": {
+    "scripts/rev1/run_sfcplanner_ksp_adaptation.py": "39e5a707bad257e85525c7b0762307d9380f1c976bd93d5f4064cf516eeed406",
+    "src/analytics/benchmark/benchmark_algorithm/algorithms.py": "e9af103c5bf965b33de320489f5dddcb26985a9c875e4a09dad0474d6b13683a"
+  },
+  "git_revision": "c1b26576f1405f7a0a5e0355fd1007616e4821c3",
+  "git_worktree_dirty": true
+}

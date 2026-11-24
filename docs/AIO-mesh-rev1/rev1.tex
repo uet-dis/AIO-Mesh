@@ -132,7 +132,7 @@ This problem is naturally an \rev{artificial intelligence for IT operations (AIO
 
 Programmable data planes make this deployability gap explicit. \newrev{Segment Routing over IPv6 (SRv6) allows an ingress node to encode a list of Segment Identifiers (SIDs) in the packet header, enabling stateless traffic steering through paths and service functions~\cite{rfc8754,rfc8986,rfc9352}.} \newrev{The Programming Protocol-independent Packet Processors (P4) language allows switches to expose packet-processing behavior through programmable parser, match-action, and deparser stages~\cite{jeyakumar2014p4}.} Together, SRv6 and P4 provide a practical substrate for steering cloud-native service chains without maintaining per-flow state at every intermediate node. Yet this flexibility is bounded by hardware. A programmable parser can inspect only a limited number of SIDs in a single pass. This limit, commonly represented by the Maximum Segment Depth (MSD), is not a tunable preference but a hard parsing boundary. If a selected service path requires a SID stack deeper than the supported MSD of the relevant forwarding profile, the action is not merely suboptimal; it is not admissible. \rev{Unchecked overflow may cause installation rejection, parser errors, or packet drops, depending on the forwarding target.}
 
-Existing orchestration methods do not fully address this operational safety requirement. Classical \rev{integer linear programming (ILP)} and heuristic formulations provide useful models for service-chain placement and routing, but they \rev{may incur high solution cost or sacrifice global optimality in online operation}. Recent \rev{deep reinforcement learning (DRL)} and graph-based methods improve adaptive \rev{service function chaining (SFC)} embedding and \rev{virtual network function (VNF)} placement~\cite{wang2021drl,xiao2023twostage,liu2024sfcml,taktak2024drl,wu2025drl}, and migration-oriented studies address failure prediction, load pressure, and migration budgets~\cite{zhai2023migration,addad2022ai,qin2023sfcmigrationbudget,afrasiabi2024cluster,zhang2025sfcmigration,hu2026rlpmo}. SRv6-aware approaches such as SFCPlanner show the relevance of source-routed flow steering for service-chain planning~\cite{qiu2024sfcplanner}. \rev{Safe reinforcement learning, shielding, and invalid-action masking also provide established mechanisms for restricting unsafe actions~\cite{gu2024safe,wachi2024constraint,huang2022closer}. However, their applicability to programmable orchestration depends on whether the checked policy action corresponds to the realized forwarding configuration.} This is \rev{important} for AIOps control, where unsafe actuation can convert a policy error into a data-plane failure.
+Existing orchestration methods do not fully address this operational safety requirement. Classical \rev{integer linear programming (ILP)} and heuristic formulations provide useful models for service-chain placement and routing, but they \rev{may incur high solution cost or sacrifice global optimality in online operation}. Recent \rev{deep reinforcement learning (DRL)} and graph-based methods improve adaptive \rev{service function chaining (SFC)} embedding and \rev{virtual network function (VNF)} placement~\cite{wang2021drl,xiao2023twostage,liu2024sfcml,taktak2024drl,wu2025drl}, and migration-oriented studies address failure prediction, load pressure, and migration budgets~\cite{zhai2023migration,addad2022ai,qin2023sfcmigrationbudget,afrasiabi2024cluster,zhang2025sfcmigration,hu2026rlpmo}. SFCPlanner is an SRv6-aware online SFC planning method based on DRL; it models flow-path planning to reduce maximum link utilization and uses node masking and incremental training~\cite{qiu2024sfcplanner}. \rev{Safe reinforcement learning, shielding, and invalid-action masking also provide established mechanisms for restricting unsafe actions~\cite{gu2024safe,wachi2024constraint,huang2022closer}. However, their applicability to programmable orchestration depends on whether the checked policy action corresponds to the realized forwarding configuration.} This is \rev{important} for AIOps control, where unsafe actuation can convert a policy error into a data-plane failure.
 
 The core research question addressed in this paper is therefore: \rev{\emph{how can an AIOps runtime use learned policies for cloud-native distributed service orchestration while independently checking hardware deployability before actuation?}} This question has three coupled challenges. First, \newrev{placement, routing, SID depth, and latency depend on the substrate, and the policy must receive enough state to represent these dependencies.} Second, the runtime must distinguish hard deployability constraints from soft operational objectives. \newrev{Central processing unit (CPU), memory, and MSD feasibility} must be enforced before actuation, whereas latency, service-level pressure, and \rev{action-switching cost} can be optimized through the reward function. Third, the learned policy must be embedded into a closed-loop AIOps runtime that connects telemetry, state construction, inference, safety validation, cloud-native lifecycle management, programmable steering, and feedback monitoring.
 
@@ -355,6 +355,8 @@ This runtime organization follows an MLOps discipline but is specialized for net
 \label{subsec:freshness_revalidation}
 
 \newrev{The runtime admission boundary evaluates each proposed placement--routing pair against residual CPU and memory capacity and the configured MSD predicate. Policy-side masking reduces the candidate set; admission independently checks the selected pair and reserves its local resources. A process-level lock serializes local reservations. Admission compares the decision snapshot version with the current local reservation state under that lock. The check covers local updates before reservation. External telemetry not yet ingested and changes during deployment or steering are outside that interval. If no candidate passes the configured checks, the runtime returns \texttt{NO\_SAFE\_ACTION}. The simulator benchmarks report these pair-level predicates as proposed, rejected, and admitted outcomes.}
+
+\newrev{A deterministic local fault-injection check confirmed that the admission path rejects stale telemetry and reported state-version changes before actuation. It also showed that an external resource change not delivered to the manager remains undetectable. The four injected cases and their outcomes are reported in Supplementary Table~S25; these checks do not establish protection against unobserved changes during external actuation.}
 
 \newrev{For requests with explicit ingress information, Section~\ref{subsec:data_plane_interface} describes the additional checks on the materialized path.}
 
@@ -618,6 +620,8 @@ Migration is orchestrated by the lifecycle layer rather than emitted as a separa
 
 \newrev{The flat-action ablation defines Full with a graph encoder, action mask, and adaptive SLA penalty. MLP changes the encoder, NoMask removes policy masking, and NoAdapt fixes the SLA coefficient. SoftMSD uses an MSD reward penalty without a policy mask. NoMask and SoftMSD each have an evaluation mode with the MSD admission check disabled, while other resource checks stay active. Each bypass uses its corresponding checkpoint.}
 
+\newrev{The NoMask variant is a controlled GAT--PPO pair-level comparator motivated by graph-based DRL for SFC embedding~\cite{xiao2023twostage,liu2024sfcml}; it retains this study's request model, reward, and action space while removing policy-side masking. It is not a reproduction of either cited method's full multi-datacenter, ordered-chain formulation. Results from this comparator isolate the masking/admission mechanisms in the implemented simulator and are not estimates of failure rates across published orchestrators.}
+
 \newrev{The algorithm benchmark reports safe acceptance per offered, non-skipped request and aggregates 20 seed-level rates with sample standard deviation (SD). For each protected HARP--SAF-H and HARP--CSPF contrast, paired seed-level acceptance differences are tested using the two-sided Wilcoxon signed-rank test~\cite{wilcoxon1945}; percentile-bootstrap 95\% confidence intervals (CIs) use 10,000 resamples, and Holm correction~\cite{holm1979} is applied separately across the nine topology--workload comparisons in each family. The fixed-profile arrival-rate sweep uses the same paired test, 20,000 paired percentile-bootstrap resamples, and Holm correction across its 15 topology--rate contrasts. The paired rank-biserial effect is positive when HARP tends to have higher acceptance; it describes the signed rank balance, not the magnitude in percentage points. The timing-instrumented ablation reports safe acceptance and policy-decision P95 over 20 evaluation seeds using mean and sample SD. The matched-trace ablation reports sample SD across seed--workload evaluation cells. These deviations describe evaluation variation conditional on the evaluated checkpoints, not variation across independently trained policies.}
 
 \newrev{For the timing-instrumented and matched-trace ablations, safe acceptance is accepted requests minus the unique admitted requests violating any modeled hard CPU, memory, bandwidth, or MSD constraint, divided by offered non-skipped requests. Proposed CPU, memory, bandwidth, and MSD violation rates may overlap; the union rate is reported separately. Candidate pruning is computed over the flat $N^2$ action set.}
@@ -641,7 +645,7 @@ Migration is orchestrated by the lifecycle layer rather than emitted as a separa
 \color{revisiongreen}
 
 \setlength{\tabcolsep}{3pt}
-\resizebox{\textwidth}{!}{%
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{llrrrrr}
 \toprule
 Network & Profile & Greedy & DAI & SAF-H & CSPF & HARP \\
@@ -820,13 +824,15 @@ Variant & CPU & RAM & BW & MSD & Union & Admitted \\
 {\color{revisiongreen}
 \scriptsize
 \setlength{\tabcolsep}{2.5pt}
-\input{generated/table_hil_msd.tex}
+\resizebox{\columnwidth}{!}{%
+\input{generated/table_hil_msd.tex}%
+}
 }
 \end{table}
 
 \newrev{\textbf{Long run.} Table~\ref{tab:hil_longrun} reports the three-hour run after lifecycle capacity release. It started with 17 active VNFs and mean ledger CPU utilization of 48.0\%. A sequential workload at 3.5-second intervals admitted 209 of 3,083 requests (6.78\%), with no timeout or admitted modeled violation. Every minute all 17 Deployments were Ready in all 180 samples. Over 90 rounds, 1,800 of 1,800 packets reached nine previously steered VNFs. The admission workload did not deploy or steer the 209 accepted requests. This run measures admission, readiness, and delivery to previously steered single VNFs; it does not measure traversal of an ordered multi-VNF chain or continuity during migration.}
 
-\begin{table*}[t]
+\begin{table}[t]
 \centering
 \caption{\newrev{Three-hour HIL run after lifecycle capacity release. Decision latency is backend time logged by the client; packet probes target previously steered VNFs, not the 209 newly admitted requests.}}
 \label{tab:hil_longrun}
@@ -834,7 +840,7 @@ Variant & CPU & RAM & BW & MSD & Union & Admitted \\
 \footnotesize
 \input{generated/table_hil_longrun.tex}
 }
-\end{table*}
+\end{table}
 
 \subsection{\newrev{Sensitivity to Offered Load and Background Occupancy}}
 \label{subsec:hardware_safe_admission}
@@ -918,39 +924,44 @@ Variant & CPU & RAM & BW & MSD & Union & Admitted \\
 \label{subsec:decision_cost}
 \newrev{A separate serialized, same-process Vietnam policy-decision timing study used the Bursty workload, 10 matched seeds, and 3,000 steps per seed. This controlled study uses a separately pinned HARP checkpoint; the size-matched main-policy measurements are reported separately in Table~\ref{tab:harp_component_timing}. Per-seed offered-trace hashes matched exactly between HARP and SAF-H. After one excluded warm-up run per policy, execution order alternated across seeds. Mean seed-level decision P50/P95/P99 was 1.925/2.131/2.481~ms for HARP and 0.339/0.494/0.527~ms for SAF-H; HARP's P95 was 1.637~ms higher (4.3$\times$). HARP's mean seed-level policy-inference P95 was 1.617~ms. For SAF-H, feasible-set construction and heuristic selection had mean seed-level P95 values of 0.062 and 0.133~ms. The measured simulator runners processed 537 and 3,282 offered decisions per second, respectively, calculated from completed simulator decisions and run wall time. The decision intervals include the simulator step and exclude live telemetry transport, controller handoff, deployment, readiness, and steering.}
 
-\newrev{For the size-matched HARP stress benchmark, Table~\ref{tab:harp_component_timing} reports means of seed-level P95 timings for normalization, mask construction, policy inference, and total simulator decision time in the Burst-surge profile. Benchmark jobs ran concurrently on a shared host; these measurements are not isolated latency measurements. Components can overlap and their P95 values cannot be added to obtain total P95.}
+\newrev{We therefore trained size-specific HARP checkpoints for 25-, 50-, and 100-node synthetic grids and ran a serialized timing study against SAF-H on identical Bursty offered traces. Each topology uses its corresponding frozen checkpoint, ten seeds, and 300 decisions per seed; policy order alternates by seed after one excluded warm-up per method and topology. All per-seed trace hashes matched. PyTorch inference used one intra-op CPU thread on an Intel Core i5-12500H host. Table~\ref{tab:harp_component_timing} reports means of seed-level percentiles. At 100 nodes, HARP mask and policy-inference P95 were 3.926 and 39.803~ms, while total decision P95 was 44.273~ms; SAF-H candidate enumeration and total decision P95 were 3.435 and 11.103~ms. These runs demonstrate that the current N-squared policy can be trained and executed at the tested synthetic sizes. Because each size has its own checkpoint, they do not test transfer to unseen graph sizes or topologies. The timings are simulator-side and exclude telemetry transport, controller handoff, deployment, readiness, and steering. Component P95 values are measured separately and must not be summed to recover total P95.}
 \begin{table}[t]
 \centering
-\caption{HARP simulator timing in synthetic Burst-surge runs (ms; mean of 20 seed-level P95 values).}
+\caption{Matched simulator timing in synthetic Bursty runs (ms; mean of ten seed-level percentiles, 300 decisions per seed).}
 \label{tab:harp_component_timing}
 \scriptsize
 \resizebox{\columnwidth}{!}{%
-\begin{tabular}{rrrrr}
+\begin{tabular}{rrrrrrr}
 \toprule
-Nodes & Normalize & Mask & Inference & Decision \\
+Nodes & Policy & Mask/candidates P95 & Inference/selection P95 & Decision P50 & Decision P95 & Decision P99 \\
 \midrule
-\TableRows{evidence/completion_20261121/timing_components.tex}
+25 & HARP & 0.239 & 1.489 & 1.747 & 1.957 & 2.084 \\
+25 & SAF-H & 0.206 & 0.434 & 0.753 & 0.814 & 0.838 \\
+50 & HARP & 1.034 & 4.529 & 4.836 & 5.920 & 6.526 \\
+50 & SAF-H & 0.862 & 1.753 & 2.732 & 2.871 & 3.014 \\
+100 & HARP & 3.926 & 39.803 & 39.051 & 44.273 & 51.219 \\
+100 & SAF-H & 3.435 & 7.180 & 10.282 & 11.103 & 84.577 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-\newrev{Topology-size timing was measured for SAF-H on deterministic synthetic grids with 25, 50, and 100 nodes, 10 seeds, and 300 decisions per seed; the complete pair-action space contains $N^2$ candidates. Mean per-seed feasible-set P50/P95/P99 time was 0.315/0.368/0.390~ms, 1.355/1.488/1.649~ms, and 5.534/70.175/76.377~ms, respectively. Mean per-seed decision P95/P99 was 1.554/1.620, 5.297/5.728, and 83.562/89.829~ms. The 100-node feasible-set P95 ranged from 68.441 to 72.238~ms across the ten seeds, versus a P50 range of 5.510--5.563~ms; the corresponding decision P95 range was 81.643--85.574~ms. Thus the tail recurred within every seed and was concentrated in feasible-set construction, rather than being a single anomalous seed. The saved percentiles cannot identify which suboperation or host condition within that construction caused the tail. These measurements characterize SAF-H's simulator-side scaling on synthetic grids; HARP decision timings are reported for the evaluated benchmark topologies. The synthetic-grid SAF-H timing runs were serial with no pre-seeded background chains; the evaluated implementations did not use a candidate-path cache. Live API concurrency and campaign actuation latency are reported separately in Section~\ref{subsec:testbed_validation}.}
+\newrev{The action space contains $N^2$ placement--routing pairs. Across the measured sizes, mean seed-level HARP decision P95 rose from 1.957~ms at 25 nodes to 5.920~ms at 50 and 44.273~ms at 100; SAF-H decision P95 rose from 0.814 to 2.871 and 11.103~ms. The 100-node SAF-H mean seed-level decision P99 was 84.577~ms despite its 11.103-ms P95, indicating a long upper tail in some runs. A prior SAF-H-only archive recorded markedly higher P95 values at 100 nodes; the difference across runs shows that tail timing is host- and run-sensitive, so we do not attribute it to one algorithmic suboperation. The present paired study is the primary comparison because both policies ran serially under one protocol, with no pre-seeded background chains or candidate-path cache. These results characterize local simulator decisions, not live API or actuation capacity.}
 
 \begin{table}[t]
 \centering
-\caption{\newrev{SAF-H timing versus synthetic topology size (10 seeds; 300 decisions per seed). Values are means of seed-level percentiles.}}
+\caption{\newrev{Matched HARP and SAF-H simulator decision latency versus synthetic topology size (10 seeds; 300 decisions per seed). Values are means of seed-level percentiles.}}
 \label{tab:synthetic_scalability}
 \scriptsize
 {\color{revisiongreen}
 \setlength{\tabcolsep}{3pt}
 \resizebox{\columnwidth}{!}{%
-\begin{tabular}{rrrrrr}
+\begin{tabular}{rrrrrrr}
 \toprule
-Nodes & Links & Pair actions ($N^2$) & Feasible-set P50 (ms) & Feasible-set P95 (ms) & Decision P95 (ms) \\
+Nodes & Links & Pair actions ($N^2$) & HARP decision P50 (ms) & HARP decision P95 (ms) & SAF-H decision P50 (ms) & SAF-H decision P95 (ms) \\
 \midrule
-25 & 40 & 625 & 0.315 & 0.368 & 1.554 \\
-50 & 85 & 2,500 & 1.355 & 1.488 & 5.297 \\
-100 & 180 & 10,000 & 5.534 & 70.175 & 83.562 \\
+25 & 40 & 625 & 1.747 & 1.957 & 0.753 & 0.814 \\
+50 & 85 & 2,500 & 4.836 & 5.920 & 2.732 & 2.871 \\
+100 & 180 & 10,000 & 39.051 & 44.273 & 10.282 & 11.103 \\
 \bottomrule
 \end{tabular}%
 }}
@@ -959,7 +970,7 @@ Nodes & Links & Pair actions ($N^2$) & Feasible-set P50 (ms) & Feasible-set P95 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.92\textwidth]{figs/policy_cost_scalability.pdf}
-    \caption{\newrev{Measured simulator decision latency and SAF-H topology-size cost. Left: mean per-seed decision P50 and P95 for HARP and SAF-H on Vietnam (10 seeds, 3,000 steps per seed). Right: mean per-seed feasible-set P50 and P95 and decision P95 for SAF-H on synthetic 25-, 50-, and 100-node grids (10 seeds, 300 decisions per seed). Axes use a logarithmic scale. Measurements cover local simulator decisions.}}
+    \caption{\newrev{Measured simulator decision latency and matched topology-size cost. Left: mean per-seed decision P50 and P95 for HARP and SAF-H on Vietnam (10 seeds, 3,000 steps per seed). Right: mean per-seed P95 for HARP mask construction, policy inference, and total decision and SAF-H candidate enumeration and total decision on synthetic 25-, 50-, and 100-node grids (10 matched seeds, 300 decisions per seed). Axes use a logarithmic scale. Measurements cover local simulator decisions.}}
     \label{fig:policy_cost_scalability}
 \end{figure*}
 
@@ -976,7 +987,7 @@ Nodes & Links & Pair actions ($N^2$) & Feasible-set P50 (ms) & Feasible-set P95 
 
 \newrev{Supplementary Table~S20 reports service latency and SLA outcomes for HARP and SAF-H by workload. Across the nine stress conditions, mean seed-level simulated service latency is 5.25--7.39~ms for HARP and 0.32--0.62~ms for SAF-H; mean seed-level SLA-violation rates are approximately 0.00--0.21\% and zero, respectively. These quantities describe the requests admitted by each policy, whose composition may differ. SAF-H may choose the same node for placement and routing. HARP also permits that pair but its reward includes a bonus for distinct endpoints. They provide no evidence of a HARP service-latency advantage in these conditions and are distinct from policy-computation timing.}
 
-\newrev{The evaluation uses latency-derived graphs and synthetic demand; the named substrate graphs are complete at the chosen thresholds. Main policy comparisons are conditional on topology-specific checkpoints; the three-training-seed check covers Vietnam only. The primary Bursty sweeps share an offered trace, supplemented by a seed-offset sensitivity study. MSD-invalid proposals are infrequent in simulation. Shared-host HARP timings include scheduling effects. HIL measurements concern one VNF per request on BMv2, with the recorded runtime network configuration. They establish deployment, rule readback, steering, packet delivery, and migration ordering under the tested conditions. Ordered multi-VNF traversal, ASIC behavior, flow continuity during migration, and Hybrid switching performance are outside this measurement scope.}
+\newrev{The evaluation uses latency-derived graphs and synthetic demand; the named substrate graphs are complete at the chosen thresholds. Main policy comparisons are conditional on topology-specific checkpoints; the three-training-seed check covers Vietnam only. The primary Bursty sweeps share an offered trace, supplemented by a seed-offset sensitivity study. MSD-invalid proposals are infrequent in simulation. Shared-host HARP timings include scheduling effects. Size-specific training and inference on synthetic 25-, 50-, and 100-node graphs establish feasibility at those tested sizes, not transfer to unseen or production topologies. Request-correlated HIL campaigns establish deployment, rule readback, steering, packet delivery, and migration ordering under the tested conditions; they are finite campaigns rather than multi-hour repeated actuation. Ordered multi-VNF traversal, ASIC behavior, flow continuity during migration, and Hybrid switching performance are outside this measurement scope.}
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -994,7 +1005,7 @@ The authors declare that they have no known competing financial interests or per
 
 \section*{Data and Code Availability}
 \newrev{The project source code is available at the repository below. The reproduction guide indexes retained simulator records and scripts for the offered-intensity and fixed-profile arrival-rate results, together with the testbed inputs used to generate the control-plane, end-to-end, and long-run HIL tables. The source repository is:}
-\url{https://github.com/uet-dis/AIO-Mesh/}.
+\url{https://github.com/uet-dis/AIO-Mesh/tree/HARP-final}.
 
 \section*{Declaration of Generative AI and AI-Assisted Technologies in the Writing Process}
 During the preparation of this work, the authors used OpenAI Codex to assist with organizing and refining scientific prose, checking consistency between manuscript statements and supplied experimental records, and editing LaTeX formatting. The authors reviewed the resulting text and remain responsible for verifying the underlying evidence and for the final content of the published article.

@@ -146,7 +146,22 @@ async def orchestrate_sfc(request: SFCRequest, background_tasks: BackgroundTasks
                 "reservation_release_reason": release_reason,
             })
         # Mark intent before queuing, so a concurrent TTL cannot release it.
-        state_manager.mark_actuation_requested(vnf_name)
+        actuation_ready, actuation_error = state_manager.mark_actuation_requested(
+            vnf_name, expected_state_version=decision.admission_state_version,
+        )
+        if not actuation_ready:
+            released, release_reason = state_manager.release_unactuated_reservation(vnf_name)
+            error_code = {
+                "stale_telemetry": "STALE_TELEMETRY",
+                "stale_state_version": "STALE_STATE_BEFORE_ACTUATION",
+            }.get(actuation_error, "RESERVATION_UNAVAILABLE")
+            raise HTTPException(status_code=409, detail={
+                "status": "error",
+                "code": error_code,
+                "reason": actuation_error,
+                "reservation_released": released,
+                "reservation_release_reason": release_reason,
+            })
         # Tìm VNF cũ tốn CPU nhất trên node được chọn để migrate
         # The reservation for vnf_name was just recorded on this node; it is the
         # replacement being created, never the old instance to migrate from.

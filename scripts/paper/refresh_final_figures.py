@@ -26,7 +26,7 @@ def main():
     run('scripts/paper/make_load_sweep_figure.py')
     run('scripts/rev1/plot_manuscript_ablation.py')
     cost = ROOT / 'results/rev1/nonhil_studies/20261117_233441/controlled_policy_cost.json'
-    scale = ROOT / 'results/rev1/nonhil_studies/20261117_235132/topology_scalability.json'
+    scale = ROOT / 'results/rev1/nonhil_studies/20261122_223346/topology_scalability.json'
     run('scripts/rev1/plot_nonhil_studies.py', '--cost', cost, '--scale', scale,
         '--output', FIG / 'policy_cost_scalability.pdf')
     import matplotlib.pyplot as plt

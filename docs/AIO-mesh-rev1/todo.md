@@ -35,7 +35,7 @@ Bản revise phải tách rõ hai lớp đóng góp: **(i) runtime safety contra
 2. **`figs/VN_load_sweep.pdf`**: thay single-method curve bằng multiple protected baselines; ưu tiên 2 panels: (a) safe acceptance; (b) runtime rejection/hard-infeasible pressure. Nếu admitted violation của tất cả protected methods đều 0 thì có thể biểu diễn bằng annotation thay vì curve chồng nhau.
 3. **`figs/testbed.pdf`**: thể hiện rõ protected vs bypass path; mọi protected policy phải đi qua cùng Admission Boundary. Nếu thêm protected Greedy/DAI, figure không cần đổi logic nhưng caption phải nói common boundary.
 4. **Hình mới — K sensitivity**: x=`K`; y1=safe acceptance, y2=mask latency/cache memory hoặc dùng bảng nếu figure quá dày.
-5. **Hình mới — Scalability/latency**: `figs/policy_cost_scalability.pdf` hiện báo HARP-vs-SAF-H decision percentiles ở Vietnam và SAF-H feasible-set percentiles trên 25/50/100 synthetic nodes. Đây là phép đo simulator-side; bổ sung HARP size-matched checkpoints và actuation timing nếu sau này thực hiện được, không gộp actuation vào decision latency.
+5. **Scalability/latency — đã cập nhật simulator-side**: `figs/policy_cost_scalability.pdf` giờ báo HARP mask/inference/decision và SAF-H candidate/decision timing trên 25/50/100 synthetic nodes với size-matched HARP checkpoints, matched trace hash, 10 seeds, 300 quyết định/seed. Thời gian actuation vẫn được báo riêng, không gộp vào decision latency.
 6. **Hình mới tùy chọn — Long-run HIL**: time series decision latency + cumulative admitted violations/rejections; nếu không có biến động đáng kể, dùng summary table thay figure.
 
 ## Protocol thực nghiệm khuyến nghị

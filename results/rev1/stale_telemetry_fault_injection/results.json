@@ -1,0 +1,50 @@
+{
+  "created_utc": "2026-11-22T15:50:21.668513+00:00",
+  "git_revision": "c1b26576f1405f7a0a5e0355fd1007616e4821c3",
+  "source_sha256": {
+    "scripts/rev1/run_stale_telemetry_fault_injection.py": "41b53fb3c1caeb76c13af73a5b0eb907c61d8db6ff52b86444a1936e860067ec",
+    "src/core/state_manager.py": "6fa5ba8e25f7a2b459c17d9dcc194eaac0de68f0ae7a3fe13e59b7ad542ac403",
+    "src/portal/backend/app/routers/orchestration_router.py": "76a2d8c9cc8adc988f3e18ef40669620e27d035fa640c4d41f30bd5eef729cd1",
+    "tests/test_orchestration_api.py": "944d8e2e8cf1b6ab6aa62f3759cfb5c252f0e996e75c43c84e392dba9b85ea8e"
+  },
+  "topology": "vietnam",
+  "fault_injection_count": 4,
+  "results": [
+    {
+      "fault": "telemetry_older_than_ttl",
+      "max_age_s": 60.0,
+      "stale_nodes": 10,
+      "nodes": 10,
+      "reserve_accepted": false,
+      "reserve_rejection": "stale_telemetry",
+      "expected": "stale_telemetry"
+    },
+    {
+      "fault": "reported_resource_change_after_snapshot",
+      "snapshot_version": 10,
+      "current_version": 11,
+      "reserve_accepted": false,
+      "reserve_rejection": "stale_state_version",
+      "expected": "stale_state_version"
+    },
+    {
+      "fault": "reported_resource_change_after_reservation_before_actuation",
+      "reserve_accepted": true,
+      "reserve_rejection": null,
+      "actuation_marked": false,
+      "actuation_rejection": "stale_state_version",
+      "reservation_released": true,
+      "release_rejection": null,
+      "expected": "stale_state_version_and_release_before_actuation"
+    },
+    {
+      "fault": "external_resource_change_unreported_to_manager",
+      "reserve_accepted": true,
+      "reserve_rejection": null,
+      "actuation_marked": true,
+      "actuation_rejection": null,
+      "expected": "not_detectable_from_local_state"
+    }
+  ],
+  "scope": "process-local admission and pre-actuation version gate; the unreported-change case documents an observability gap, not a hardware-side experiment"
+}

@@ -88,7 +88,7 @@ DRL-based SFC placement~\cite{wang2021drl,taktak2024drl,li2023qosaware} & Online
 SFC migration studies~\cite{zhai2023migration,addad2022ai,qin2023sfcmigrationbudget,afrasiabi2024cluster,zhang2025sfcmigration,hu2026rlpmo} & Load/failure migration & Partial & Varies & No & No & Limited \\
 SRv6/P4 service-chain systems~\cite{stockmayer2020p4sfc,xiang2019p4sc,yan2024srv6int,li2024stsfc,ma2024sfcache} & Programmable steering & Limited & Partial & Partial & Yes & Limited \\
 \newrev{Safe RL for network slicing~\cite{liu2021safeslicing,nagib2025safeslice}} & \newrev{Resource and latency constraints} & Partial & Varies & No & No & Limited \\
-SFCPlanner~\cite{qiu2024sfcplanner} & SRv6-aware planning & No & Partial & Partial & Yes & No \\
+SFCPlanner~\cite{qiu2024sfcplanner} & DRL flow-path planning; max-link-utilization objective & No & Partial & No explicit MSD admission & Yes & No \\
 AIOps/MLOps automation~\cite{kreuzberger2023mlops,diazdearcaya2024joint,eken2025mlops,bayram2025trustworthy,zhang2025aiopsllm,eramo2024architecture} & Operational ML loops & Partial & Not network-specific & No & No & Yes \\
 \textbf{AIO-Mesh / HARP} & Hardware-safe AIOps orchestration & \textbf{Yes} & \textbf{Yes} & \rev{Pair-level} & \textbf{Yes} & \textbf{Yes} \\
 \bottomrule
@@ -421,6 +421,23 @@ Training seed & Saved transitions & Mean safe acceptance (\%) & Evaluation SD (p
 \caption{Full BMv2 over-MSD trials, including the per-switch path profiles. Isolated rows aggregate three 100-packet trials per mode; live rows use 50 packets per depth.}
 \label{tab:hil_msd_detailed}
 {\scriptsize\input{generated/table_hil_msd_detailed.tex}}
+\end{table*}
+
+\begin{table*}[p]
+\centering
+\caption{Deterministic local telemetry-freshness and state-version fault injections. These cases exercise the process-local reservation and pre-actuation gate; they do not emulate hardware faults or estimate operational fault rates.}
+\label{tab:telemetry_fault_injection}
+\scriptsize
+\begin{tabular}{p{0.36\textwidth}p{0.34\textwidth}p{0.22\textwidth}}
+\toprule
+Injected case & Observed outcome & Scope \\
+\midrule
+All 10 Vietnam-node telemetry records older than the configured 60-s limit & Reservation rejected as \texttt{stale\_telemetry} & Local freshness gate \\
+Reported resource update after decision snapshot (version 10 to 11) & Reservation rejected as \texttt{stale\_state\_version} & Snapshot-to-reservation race \\
+Reported resource update after reservation and before actuation request & Actuation mark rejected; unactuated reservation released & Local pre-actuation gate \\
+External resource change not delivered to the manager & Not detected; local actuation gate proceeded & Observability limitation \\
+\bottomrule
+\end{tabular}
 \end{table*}
 \clearpage
 \bibliographystyle{elsarticle-num}
